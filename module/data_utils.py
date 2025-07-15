@@ -1,13 +1,12 @@
 # module/data_utils.py
 
+# module/data_utils.py
+
 import pandas as pd
 import os
 import difflib
 import google.generativeai as genai
 
-# --------------------------------------
-# Synonyms for fuzzy column role matching
-# --------------------------------------
 COLUMN_SYNONYMS = {
     "Revenue": ["Revenue", "Sales", "Total", "Income", "Ingresos", "Amount"],
     "Product": ["Product", "Item", "Producto", "Product_Name"],
@@ -15,41 +14,36 @@ COLUMN_SYNONYMS = {
     "Month": ["Month", "Mes", "Periodo", "Period"]
 }
 
-# --------------------------------------
-# Load and clean any Excel/CSV upload
-# --------------------------------------
 def load_and_clean_data(filepath):
     ext = os.path.splitext(filepath)[-1].lower()
     df = None
 
-    # Try Excel first
     if ext in [".xls", ".xlsx"]:
         try:
             df = pd.read_excel(filepath)
         except Exception as e:
-            raise ValueError(f"❌ Could not read Excel file: {e}")
+            raise ValueError(f"❌ Excel read error: {e}")
     else:
         # Try multiple encodings for CSV
         encodings = ["utf-8", "utf-8-sig", "ISO-8859-1", "cp1252"]
         for enc in encodings:
             try:
-                df = pd.read_csv(filepath, encoding=enc)
+                with open(filepath, encoding=enc) as f:
+                    df = pd.read_csv(f)
                 break
             except UnicodeDecodeError:
                 continue
             except Exception as e:
-                raise ValueError(f"❌ Error reading CSV with encoding {enc}: {e}")
+                raise ValueError(f"❌ Unexpected error reading CSV: {e}")
         if df is None:
-            raise ValueError("❌ Failed to read CSV. Try re-saving it with UTF-8 or upload as Excel.")
+            raise ValueError("❌ Failed to read CSV. Please try saving the file as UTF-8 or Excel.")
 
     if df.empty:
-        raise ValueError("❌ Loaded file is empty.")
+        raise ValueError("❌ File loaded but it contains no usable data.")
 
-    # Clean column names
     df.columns = [col.strip() for col in df.columns]
     df = df.dropna(how="all")
 
-    # Create Month column if Date exists
     if "Date" in df.columns:
         df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
         df["Month"] = df["Date"].dt.to_period("M").astype(str)
