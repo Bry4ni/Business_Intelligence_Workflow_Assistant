@@ -1,10 +1,9 @@
 # module/data_utils.py
 
-# module/data_utils.py
-
 import pandas as pd
 import os
 import difflib
+import chardet
 import google.generativeai as genai
 
 COLUMN_SYNONYMS = {
@@ -16,7 +15,6 @@ COLUMN_SYNONYMS = {
 
 def load_and_clean_data(filepath):
     ext = os.path.splitext(filepath)[-1].lower()
-    df = None
 
     if ext in [".xls", ".xlsx"]:
         try:
@@ -24,22 +22,19 @@ def load_and_clean_data(filepath):
         except Exception as e:
             raise ValueError(f"❌ Excel read error: {e}")
     else:
-        # Try multiple encodings for CSV
-        encodings = ["utf-8", "utf-8-sig", "ISO-8859-1", "cp1252"]
-        for enc in encodings:
-            try:
-                with open(filepath, encoding=enc) as f:
-                    df = pd.read_csv(f)
-                break
-            except UnicodeDecodeError:
-                continue
-            except Exception as e:
-                raise ValueError(f"❌ Unexpected error reading CSV: {e}")
-        if df is None:
-            raise ValueError("❌ Failed to read CSV. Please try saving the file as UTF-8 or Excel.")
+        # ✅ Auto-detect CSV encoding with chardet
+        with open(filepath, "rb") as f:
+            raw_data = f.read(10000)
+            result = chardet.detect(raw_data)
+            encoding = result["encoding"] or "utf-8"
+
+        try:
+            df = pd.read_csv(filepath, encoding=encoding)
+        except Exception as e:
+            raise ValueError(f"❌ CSV read error with encoding {encoding}: {e}")
 
     if df.empty:
-        raise ValueError("❌ File loaded but it contains no usable data.")
+        raise ValueError("❌ Loaded file is empty.")
 
     df.columns = [col.strip() for col in df.columns]
     df = df.dropna(how="all")
@@ -49,7 +44,6 @@ def load_and_clean_data(filepath):
         df["Month"] = df["Date"].dt.to_period("M").astype(str)
 
     return df
-
 # --------------------------------------
 # Fuzzy match to fallback column if AI fails
 # --------------------------------------
