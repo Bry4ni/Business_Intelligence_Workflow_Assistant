@@ -13,13 +13,16 @@ COLUMN_SYNONYMS = {
 }
 
 def load_and_clean_data(filepath):
-    if not os.path.exists(filepath):
-        raise FileNotFoundError(f"File not found: {filepath}")
+    try:
+        df = pd.read_csv(filepath, encoding='utf-8')
+    except UnicodeDecodeError:
+        df = pd.read_csv(filepath, encoding='ISO-8859-1')  # Fallback
 
-    df = pd.read_csv(filepath)
-    df['Date'] = pd.to_datetime(df['Date'], errors='coerce')
-    df.dropna(inplace=True)
-    df['Month'] = df['Date'].dt.to_period('M')
+    df.columns = [col.strip() for col in df.columns]
+    df = df.dropna(how='all')  # Drop empty rows
+    if 'Date' in df.columns:
+        df['Date'] = pd.to_datetime(df['Date'], errors='coerce')
+        df['Month'] = df['Date'].dt.to_period('M').astype(str)
     return df
 
 def find_best_column(df, expected):
