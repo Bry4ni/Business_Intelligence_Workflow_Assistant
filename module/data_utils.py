@@ -14,25 +14,29 @@ COLUMN_SYNONYMS = {
 
 def load_and_clean_data(filepath):
     ext = os.path.splitext(filepath)[-1].lower()
+    df = None
 
     try:
         if ext in [".xls", ".xlsx"]:
             df = pd.read_excel(filepath)
-        else:  # Handle CSV with fallback encodings
-            df = None
-            encodings = ["utf-8", "utf-8-sig", "ISO-8859-1", "cp1252"]
-            for enc in encodings:
+        else:
+            # CSV with multiple encoding attempts
+            encodings_to_try = ["utf-8", "utf-8-sig", "ISO-8859-1", "cp1252"]
+            for enc in encodings_to_try:
                 try:
                     df = pd.read_csv(filepath, encoding=enc)
                     break
-                except UnicodeDecodeError:
+                except Exception as e:
                     continue
             if df is None:
-                raise ValueError("❌ Could not read CSV file using standard encodings. Try re-saving it with UTF-8.")
+                raise ValueError("❌ Unable to read CSV using standard encodings.")
     except Exception as e:
-        raise ValueError(f"❌ Failed to read file. Make sure it's a valid Excel or CSV.\n\nError: {str(e)}")
+        raise ValueError(f"❌ File read error: {str(e)}")
 
-    # Strip column names
+    if df is None or df.empty:
+        raise ValueError("❌ Loaded file is empty or invalid.")
+
+    # Clean column headers
     df.columns = [col.strip() for col in df.columns]
     df = df.dropna(how="all")
 
