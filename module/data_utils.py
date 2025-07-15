@@ -1,5 +1,7 @@
 # Directory: module/data_utils.py
 
+# module/data_utils.py
+
 import pandas as pd
 import os
 import difflib
@@ -20,13 +22,12 @@ def load_and_clean_data(filepath):
         if ext in [".xls", ".xlsx"]:
             df = pd.read_excel(filepath)
         else:
-            # CSV with multiple encoding attempts
             encodings_to_try = ["utf-8", "utf-8-sig", "ISO-8859-1", "cp1252"]
             for enc in encodings_to_try:
                 try:
                     df = pd.read_csv(filepath, encoding=enc)
                     break
-                except Exception as e:
+                except Exception:
                     continue
             if df is None:
                 raise ValueError("❌ Unable to read CSV using standard encodings.")
@@ -36,7 +37,6 @@ def load_and_clean_data(filepath):
     if df is None or df.empty:
         raise ValueError("❌ Loaded file is empty or invalid.")
 
-    # Clean column headers
     df.columns = [col.strip() for col in df.columns]
     df = df.dropna(how="all")
 
@@ -45,7 +45,7 @@ def load_and_clean_data(filepath):
         df["Month"] = df["Date"].dt.to_period("M").astype(str)
 
     return df
-    
+
 def find_best_column(df, expected):
     possibilities = COLUMN_SYNONYMS.get(expected, [expected])
     for term in possibilities:
@@ -53,7 +53,6 @@ def find_best_column(df, expected):
         if match:
             for col in df.columns:
                 if col.lower() == match[0]:
-                    # ⬇️ NEW: Require numeric if expected is Revenue
                     if expected.lower() == "revenue":
                         if pd.api.types.is_numeric_dtype(df[col]):
                             return col
@@ -63,9 +62,12 @@ def find_best_column(df, expected):
 
 def infer_column_roles(df, api_key):
     genai.configure(api_key=api_key)
-
     columns = ", ".join(df.columns)
-    sample = df.head(10).to_markdown(index=False)
+
+    try:
+        sample = df.head(10).to_markdown(index=False)
+    except Exception:
+        sample = df.head(10).to_string(index=False)
 
     prompt = f"""
 You are a business analyst. Based on the sample data below, determine which columns most likely represent:
@@ -95,8 +97,9 @@ Sample Data:
     import json
     try:
         inferred = json.loads(response.text.strip())
+        if not isinstance(inferred, dict) or not all(k in inferred for k in ["Revenue", "Product", "Region", "Month"]):
+            raise ValueError("Gemini did not return a complete mapping.")
     except Exception:
         inferred = {}
 
     return inferred
-
