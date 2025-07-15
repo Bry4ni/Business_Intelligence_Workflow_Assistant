@@ -1,3 +1,5 @@
+# app/app.py
+
 import os
 import sys
 import tempfile
@@ -32,7 +34,7 @@ LANG_INSTRUCTION = {
     "Chinese": "请用中文回答。"
 }[language_choice]
 
-# ------------------------------ Column Mapping Logic
+# ------------------------------ Column Mapping Helper
 def safe_column(df, current, expected_role):
     if current and current in df.columns:
         return current
@@ -51,14 +53,14 @@ def safe_column(df, current, expected_role):
             return col
     return None
 
-# ------------------------------ Upload
+# ------------------------------ Upload File
 uploaded_file = st.file_uploader("Upload CSV or Excel file", type=["csv", "xlsx"])
 
 if uploaded_file:
-    file_ext = uploaded_file.name.split(".")[-1]
-    tmp_path = f"temp_upload.{file_ext}"
-    with open(tmp_path, "wb") as f:
-        f.write(uploaded_file.getbuffer())
+    # ✅ Use tempfile to handle uploaded files anywhere
+    with tempfile.NamedTemporaryFile(delete=False, suffix="." + uploaded_file.name.split(".")[-1]) as tmp_file:
+        tmp_file.write(uploaded_file.getbuffer())
+        tmp_path = tmp_file.name
 
     df = load_and_clean_data(tmp_path)
     df.columns = [col.strip() for col in df.columns]
@@ -90,19 +92,24 @@ if uploaded_file:
         st.warning("⚠️ Could not preview mapped columns.")
 
     # ------------------------------ Executive Summary
-    schema_desc = "Columns: " + ", ".join(df.columns) + "\n\nSample Data:\n" + df.head(10).to_markdown(index=False)
-    full_prompt = f"""
+    try:
+        try:
+            sample_preview = df.head(10).to_markdown(index=False)
+        except Exception:
+            sample_preview = df.head(10).to_string(index=False)
+
+        schema_desc = "Columns: " + ", ".join(df.columns) + "\n\nSample Data:\n" + sample_preview
+        full_prompt = f"""
 Analyze the following dataset and provide a business-oriented summary with trends, patterns, and recommendations.
 
 {LANG_INSTRUCTION}
 
 {schema_desc}
 """
-    st.subheader("📤 Prompt Sent to Gemini")
-    st.code(full_prompt)
+        st.subheader("📤 Prompt Sent to Gemini")
+        st.code(full_prompt)
 
-    st.subheader("🧠 Executive Summary")
-    try:
+        st.subheader("🧠 Executive Summary")
         model = genai.GenerativeModel("gemini-2.0-flash")
         response = model.generate_content(full_prompt)
         ai_summary = response.text.strip()
@@ -118,7 +125,7 @@ Analyze the following dataset and provide a business-oriented summary with trend
         df[revenue_col] = pd.to_numeric(df[revenue_col], errors='coerce')
     df_clean = df.dropna(subset=[revenue_col]) if revenue_col else df
 
-    # Chart 1
+    # Chart 1: Revenue by Product
     if revenue_col and product_col and all(c in df_clean.columns for c in [revenue_col, product_col]):
         grouped = df_clean.groupby(product_col)[revenue_col].sum().reset_index()
         fig1, ax1 = plt.subplots(figsize=(8, 5))
@@ -128,7 +135,7 @@ Analyze the following dataset and provide a business-oriented summary with trend
     else:
         st.warning("⚠️ Skipping 'Revenue by Product' — columns not found or mapped.")
 
-    # Chart 2
+    # Chart 2: Monthly Revenue Trend
     if revenue_col and month_col and all(c in df_clean.columns for c in [revenue_col, month_col]):
         grouped = df_clean.groupby(month_col)[revenue_col].sum().reset_index()
         grouped[month_col] = grouped[month_col].astype(str)
@@ -139,7 +146,7 @@ Analyze the following dataset and provide a business-oriented summary with trend
     else:
         st.warning("⚠️ Skipping 'Monthly Revenue Trend' — columns not found or mapped.")
 
-    # Chart 3
+    # Chart 3: Revenue by Region Pie Chart
     if revenue_col and region_col and all(c in df_clean.columns for c in [revenue_col, region_col]):
         grouped = df_clean.groupby(region_col)[revenue_col].sum()
         fig3, ax3 = plt.subplots(figsize=(6, 6))
@@ -150,50 +157,53 @@ Analyze the following dataset and provide a business-oriented summary with trend
     else:
         st.warning("⚠️ Skipping 'Revenue by Region' — columns not found or mapped.")
 
-    # ------------------------------ PDF Report Export (Summary + Charts)
+    # ------------------------------ PDF Report Export
     st.subheader("📝 Export Report as PDF")
 
     with st.spinner("📄 Generating PDF Report..."):
         chart_paths = []
 
-        # Save chart 1
-        grouped = df_clean.groupby(product_col)[revenue_col].sum().reset_index()
-        fig1, ax1 = plt.subplots(figsize=(8, 5))
-        sns.barplot(data=grouped, x=product_col, y=revenue_col, ax=ax1)
-        ax1.set_title("Total Revenue per Product")
-        img1 = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
-        fig1.savefig(img1.name, bbox_inches="tight")
-        chart_paths.append((img1.name, "Total Revenue per Product"))
+        try:
+            grouped = df_clean.groupby(product_col)[revenue_col].sum().reset_index()
+            fig1, ax1 = plt.subplots(figsize=(8, 5))
+            sns.barplot(data=grouped, x=product_col, y=revenue_col, ax=ax1)
+            ax1.set_title("Total Revenue per Product")
+            img1 = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
+            fig1.savefig(img1.name, bbox_inches="tight")
+            chart_paths.append((img1.name, "Total Revenue per Product"))
+        except Exception as e:
+            st.warning("⚠️ Could not render Chart 1")
 
-        # Save chart 2
-        grouped = df_clean.groupby(month_col)[revenue_col].sum().reset_index()
-        grouped[month_col] = grouped[month_col].astype(str)
-        fig2, ax2 = plt.subplots(figsize=(10, 5))
-        sns.lineplot(data=grouped, x=month_col, y=revenue_col, marker="o", ax=ax2)
-        ax2.set_title("Monthly Revenue Trend")
-        img2 = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
-        fig2.savefig(img2.name, bbox_inches="tight")
-        chart_paths.append((img2.name, "Monthly Revenue Trend"))
+        try:
+            grouped = df_clean.groupby(month_col)[revenue_col].sum().reset_index()
+            grouped[month_col] = grouped[month_col].astype(str)
+            fig2, ax2 = plt.subplots(figsize=(10, 5))
+            sns.lineplot(data=grouped, x=month_col, y=revenue_col, marker="o", ax=ax2)
+            ax2.set_title("Monthly Revenue Trend")
+            img2 = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
+            fig2.savefig(img2.name, bbox_inches="tight")
+            chart_paths.append((img2.name, "Monthly Revenue Trend"))
+        except Exception as e:
+            st.warning("⚠️ Could not render Chart 2")
 
-        # Save chart 3
-        grouped = df_clean.groupby(region_col)[revenue_col].sum()
-        fig3, ax3 = plt.subplots(figsize=(6, 6))
-        grouped.plot(kind="pie", autopct="%1.1f%%", startangle=90, ax=ax3)
-        ax3.set_title("Revenue by Region")
-        ax3.set_ylabel("")
-        img3 = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
-        fig3.savefig(img3.name, bbox_inches="tight")
-        chart_paths.append((img3.name, "Revenue by Region"))
+        try:
+            grouped = df_clean.groupby(region_col)[revenue_col].sum()
+            fig3, ax3 = plt.subplots(figsize=(6, 6))
+            grouped.plot(kind="pie", autopct="%1.1f%%", startangle=90, ax=ax3)
+            ax3.set_ylabel("")
+            ax3.set_title("Revenue by Region")
+            img3 = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
+            fig3.savefig(img3.name, bbox_inches="tight")
+            chart_paths.append((img3.name, "Revenue by Region"))
+        except Exception as e:
+            st.warning("⚠️ Could not render Chart 3")
 
-        # Build PDF
         pdf = FPDF()
         pdf.set_auto_page_break(auto=True, margin=15)
         pdf.add_page()
         pdf.set_font("Arial", 'B', 16)
         pdf.cell(0, 10, "Business Intelligence Report", ln=True)
         pdf.set_font("Arial", '', 12)
-
-        # ✅ Remove emojis or unsupported characters
         summary_clean = ''.join(c for c in ai_summary if ord(c) < 128)
         pdf.multi_cell(0, 8, summary_clean)
 
@@ -213,8 +223,7 @@ Analyze the following dataset and provide a business-oriented summary with trend
                 file_name="bi_report.pdf",
                 mime="application/pdf"
             )
+
 else:
     st.info("📁 Please upload a CSV or Excel file to get started.")
-
-
 
