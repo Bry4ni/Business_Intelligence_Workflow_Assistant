@@ -7,3 +7,4 @@ python-dotenv
 fpdf
 openpyxl
 tabulate
+chardet
