@@ -1,6 +1,8 @@
+streamlit
 pandas
 matplotlib
 seaborn
-streamlit
 google-generativeai
+python-dotenv
+fpdf
 openpyxl
