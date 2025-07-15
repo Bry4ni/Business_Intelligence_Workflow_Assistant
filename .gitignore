@@ -14,3 +14,8 @@ temp_upload.*
 # VS Code folders
 .vscode/
 .devcontainer/
+.DS_Store
+Thumbs.db
+
+# Streamlit
+.streamlit/config.toml
