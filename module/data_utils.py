@@ -15,28 +15,27 @@ COLUMN_SYNONYMS = {
 def load_and_clean_data(filepath):
     ext = os.path.splitext(filepath)[-1].lower()
 
-    # Try Excel first if file extension is correct
-    if ext in [".xls", ".xlsx"]:
-        try:
+    try:
+        if ext in [".xls", ".xlsx"]:
             df = pd.read_excel(filepath)
-        except Exception as e:
-            raise ValueError(f"❌ Failed to read Excel file: {str(e)}")
-    else:
-        # Try multiple encodings for CSV
-        for encoding in ["utf-8", "utf-8-sig", "ISO-8859-1", "cp1252"]:
-            try:
-                df = pd.read_csv(filepath, encoding=encoding)
-                break
-            except UnicodeDecodeError:
-                continue
-        else:
-            raise ValueError("❌ Failed to decode CSV file. Try saving it as UTF-8 or upload as Excel.")
+        else:  # Handle CSV with fallback encodings
+            df = None
+            encodings = ["utf-8", "utf-8-sig", "ISO-8859-1", "cp1252"]
+            for enc in encodings:
+                try:
+                    df = pd.read_csv(filepath, encoding=enc)
+                    break
+                except UnicodeDecodeError:
+                    continue
+            if df is None:
+                raise ValueError("❌ Could not read CSV file using standard encodings. Try re-saving it with UTF-8.")
+    except Exception as e:
+        raise ValueError(f"❌ Failed to read file. Make sure it's a valid Excel or CSV.\n\nError: {str(e)}")
 
-    # Clean up column names
+    # Strip column names
     df.columns = [col.strip() for col in df.columns]
     df = df.dropna(how="all")
 
-    # Add 'Month' column if 'Date' exists
     if "Date" in df.columns:
         df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
         df["Month"] = df["Date"].dt.to_period("M").astype(str)
