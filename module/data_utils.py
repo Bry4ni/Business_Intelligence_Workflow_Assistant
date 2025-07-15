@@ -13,18 +13,28 @@ COLUMN_SYNONYMS = {
 }
 
 def load_and_clean_data(filepath):
+    ext = os.path.splitext(filepath)[-1].lower()
+    
     try:
-        df = pd.read_csv(filepath, encoding='utf-8')
-    except UnicodeDecodeError:
-        df = pd.read_csv(filepath, encoding='ISO-8859-1')  # Fallback
+        if ext in [".xls", ".xlsx"]:
+            df = pd.read_excel(filepath)
+        else:  # assume .csv
+            try:
+                df = pd.read_csv(filepath, encoding="utf-8")
+            except UnicodeDecodeError:
+                df = pd.read_csv(filepath, encoding="ISO-8859-1")
+    except Exception as e:
+        raise ValueError(f"❌ Failed to read file. Please upload a valid CSV or Excel file.\n\n{str(e)}")
 
     df.columns = [col.strip() for col in df.columns]
-    df = df.dropna(how='all')  # Drop empty rows
-    if 'Date' in df.columns:
-        df['Date'] = pd.to_datetime(df['Date'], errors='coerce')
-        df['Month'] = df['Date'].dt.to_period('M').astype(str)
-    return df
+    df = df.dropna(how="all")
 
+    if "Date" in df.columns:
+        df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
+        df["Month"] = df["Date"].dt.to_period("M").astype(str)
+
+    return df
+    
 def find_best_column(df, expected):
     possibilities = COLUMN_SYNONYMS.get(expected, [expected])
     for term in possibilities:
