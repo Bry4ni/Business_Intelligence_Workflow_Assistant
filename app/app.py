@@ -10,6 +10,7 @@ import seaborn as sns
 from dotenv import load_dotenv
 from fpdf import FPDF
 import google.generativeai as genai
+import re
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from module.data_utils import load_and_clean_data
@@ -20,11 +21,11 @@ genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
 
 st.set_page_config(page_title="Multilingual BI Assistant", layout="wide")
 st.title("🌐 Multilingual Business Intelligence Assistant")
-st.markdown("Upload your dataset and ask your business question in any language.")
+st.markdown("Upload your dataset and ask a business question in any language.")
 
 sns.set_theme(style="whitegrid")
 
-# Language options
+# 🌍 Language options
 language = st.sidebar.selectbox("🌍 Output Language", ["English", "Filipino", "Spanish", "Japanese", "Chinese"])
 LANG_INSTRUCTION = {
     "English": "Respond in English.",
@@ -34,11 +35,10 @@ LANG_INSTRUCTION = {
     "Chinese": "请用中文回答。"
 }[language]
 
-# Upload section
+# 📁 File Upload
 uploaded_file = st.file_uploader("📁 Upload CSV or Excel file", type=["csv", "xlsx"])
-user_prompt = st.text_area("📝 Enter your business question (any language):", height=120)
 
-if uploaded_file and user_prompt:
+if uploaded_file:
     with tempfile.NamedTemporaryFile(delete=False) as tmp_file:
         tmp_file.write(uploaded_file.getbuffer())
         tmp_path = tmp_file.name
@@ -51,9 +51,12 @@ if uploaded_file and user_prompt:
         st.error(f"❌ Error reading file: {e}")
         st.stop()
 
-    # --- Step 1: AI Prompt
-    schema_desc = "Columns:\n" + ", ".join(df.columns) + "\n\nSample Data:\n" + df.head(10).to_markdown(index=False)
-    full_prompt = f"""
+    # 📝 User Prompt
+    user_prompt = st.text_area("📝 Enter your business question (any language):", height=120)
+    if user_prompt.strip():
+        # Step 1: AI Prompt Construction
+        schema_desc = "Columns:\n" + ", ".join(df.columns) + "\n\nSample Data:\n" + df.head(10).to_markdown(index=False)
+        full_prompt = f"""
 You are a multilingual business analyst.
 
 {LANG_INSTRUCTION}
@@ -69,66 +72,72 @@ Please respond with:
 {schema_desc}
 """
 
-    st.subheader("📤 Prompt Sent to Gemini")
-    st.code(full_prompt)
+        st.subheader("📤 Prompt Sent to Gemini")
+        st.code(full_prompt)
 
-    # --- Step 2: AI Response
-    model = genai.GenerativeModel("gemini-2.0-flash")
-    response = model.generate_content(full_prompt)
-    ai_text = response.text.strip()
-
-    st.subheader("🧠 Executive Summary + Code")
-    st.markdown(ai_text)
-
-    # --- Step 3: Parse output
-    import re
-    import io
-    summary_text = ""
-    code_blocks = re.findall(r"```python(.*?)```", ai_text, re.DOTALL)
-
-    if code_blocks:
-        summary_text = ai_text.split("```python")[0].strip()
-    else:
-        summary_text = ai_text
-
-    # --- Step 4: Safe Visualization Execution
-    st.subheader("📊 Visualizations")
-    images = []
-    for i, code in enumerate(code_blocks):
+        # Step 2: Get AI Response
         try:
-            fig = plt.figure()
-            local_vars = {"df": df, "plt": plt, "sns": sns}
-            exec(code, {}, local_vars)
-            buf = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
-            fig.savefig(buf.name, bbox_inches="tight")
-            images.append((buf.name, f"Chart {i+1}"))
-            st.image(buf.name)
+            model = genai.GenerativeModel("gemini-2.0-flash")
+            response = model.generate_content(full_prompt)
+            ai_text = response.text.strip()
         except Exception as e:
-            st.error(f"⚠️ Chart {i+1} failed: {e}")
+            st.error(f"❌ Gemini error: {e}")
+            st.stop()
 
-    # --- Step 5: PDF Export
-    st.subheader("📄 Export Summary + Charts to PDF")
-    if st.button("Generate PDF Report"):
-        pdf = FPDF()
-        pdf.set_auto_page_break(auto=True, margin=15)
-        pdf.add_page()
-        pdf.set_font("Arial", 'B', 16)
-        pdf.cell(0, 10, "Business Intelligence Report", ln=True)
-        pdf.set_font("Arial", '', 12)
+        st.subheader("🧠 Executive Summary + Code")
+        st.markdown(ai_text)
 
-        clean_summary = ''.join(c for c in summary_text if ord(c) < 128)
-        pdf.multi_cell(0, 8, clean_summary)
+        # Step 3: Extract Summary and Code
+        summary_text = ""
+        code_blocks = re.findall(r"```python(.*?)```", ai_text, re.DOTALL)
+        summary_text = ai_text.split("```python")[0].strip() if code_blocks else ai_text
 
-        for path, title in images:
+        # Step 4: Execute and Display Visualizations
+        st.subheader("📊 Visualizations")
+        images = []
+        allowed_keywords = ("df", "sns", "plt", "groupby", "plot", "sum", "mean")
+
+        for i, code in enumerate(code_blocks):
+            # Safety filter
+            if not all(k in code for k in allowed_keywords):
+                st.warning(f"⚠️ Skipping Chart {i+1}: Unsafe code detected.")
+                continue
+
+            try:
+                fig = plt.figure()
+                local_vars = {"df": df.copy(), "plt": plt, "sns": sns}
+                exec(code, {}, local_vars)
+                buf = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
+                fig.savefig(buf.name, bbox_inches="tight")
+                images.append((buf.name, f"Chart {i+1}"))
+                st.image(buf.name)
+            except Exception as e:
+                st.error(f"⚠️ Chart {i+1} failed: {e}")
+
+        # Step 5: PDF Export
+        st.subheader("📄 Export Summary + Charts to PDF")
+        if st.button("Generate PDF Report"):
+            pdf = FPDF()
+            pdf.set_auto_page_break(auto=True, margin=15)
             pdf.add_page()
-            pdf.set_font("Arial", 'B', 14)
-            pdf.cell(0, 10, title, ln=True)
-            pdf.image(path, w=180)
+            pdf.set_font("Arial", 'B', 16)
+            pdf.cell(0, 10, "Business Intelligence Report", ln=True)
+            pdf.set_font("Arial", '', 12)
 
-        pdf_path = os.path.join(tempfile.gettempdir(), "bi_report_prompt_driven.pdf")
-        pdf.output(pdf_path)
+            clean_summary = ''.join(c for c in summary_text if ord(c) < 128)
+            pdf.multi_cell(0, 8, clean_summary)
 
-        with open(pdf_path, "rb") as f:
-            st.download_button("⬇️ Download Report (PDF)", data=f, file_name="bi_report.pdf", mime="application/pdf")
+            for path, title in images:
+                pdf.add_page()
+                pdf.set_font("Arial", 'B', 14)
+                pdf.cell(0, 10, title, ln=True)
+                pdf.image(path, w=180)
+
+            pdf_path = os.path.join(tempfile.gettempdir(), "bi_report_prompt_driven.pdf")
+            pdf.output(pdf_path)
+
+            with open(pdf_path, "rb") as f:
+                st.download_button("⬇️ Download Report (PDF)", data=f, file_name="bi_report.pdf", mime="application/pdf")
+
 
 
