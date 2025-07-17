@@ -16,30 +16,28 @@ def load_and_clean_data(filepath):
 
     if ext in [".xls", ".xlsx"]:
         try:
-            return pd.read_excel(filepath)
+            df = pd.read_excel(filepath)
         except Exception as e:
             raise ValueError(f"❌ Excel read error: {e}")
     else:
-        # Try detecting encoding using chardet
+        # ✅ Auto-detect encoding for CSV files
         with open(filepath, "rb") as f:
             raw_data = f.read(10000)
-            result = chardet.detect(raw_data)
-            encoding = result.get("encoding") or "utf-8"
+            detected = chardet.detect(raw_data)
+            encoding = detected["encoding"] or "utf-8"
 
-        # Attempt to read using detected encoding
         try:
             df = pd.read_csv(filepath, encoding=encoding)
-        except Exception as e1:
-            # Retry with fallbacks
-            for fallback in ["ISO-8859-1", "latin1", "cp1252"]:
+        except Exception as e:
+            # 🔁 Fallback encodings
+            for fallback in ["ISO-8859-1", "cp1252", "latin1"]:
                 try:
                     df = pd.read_csv(filepath, encoding=fallback)
                     break
                 except Exception:
                     df = None
             if df is None:
-                raise ValueError(f"❌ CSV read error: {e1}")
-
+                raise ValueError(f"❌ CSV read error: {e}")
     if df.empty:
         raise ValueError("❌ Loaded file is empty.")
 
