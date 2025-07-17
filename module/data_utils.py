@@ -32,7 +32,22 @@ def load_and_clean_data(filepath):
         except Exception as e:
             raise ValueError(f"❌ CSV read error with encoding {encoding}: {e}")
     else:
+
         raise ValueError("❌ Unsupported file type. Please upload a .csv or .xlsx file.")
+
+        # ✅ Use chardet to detect encoding before reading CSV
+        try:
+            with open(filepath, "rb") as f:
+                raw_data = f.read(10000)
+                result = chardet.detect(raw_data)
+                encoding = result["encoding"] or "utf-8"
+        except Exception as e:
+            raise ValueError(f"❌ Failed to detect encoding: {e}")
+
+        try:
+            df = pd.read_csv(filepath, encoding=encoding)
+        except Exception as e:
+            raise ValueError(f"❌ CSV read error with encoding {encoding}: {e}")
 
     if df.empty:
         raise ValueError("❌ Loaded file is empty.")
