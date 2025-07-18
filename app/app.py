@@ -3,6 +3,7 @@
 import os
 import sys
 import tempfile
+import re
 import pandas as pd
 import streamlit as st
 import matplotlib.pyplot as plt
@@ -10,22 +11,23 @@ import seaborn as sns
 from dotenv import load_dotenv
 from fpdf import FPDF
 import google.generativeai as genai
-import re
 
+# Import local modules
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from module.data_utils import load_and_clean_data
 
-# Load environment
+# --- Load environment and configure Gemini ---
 load_dotenv()
 genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
 
+# --- Streamlit UI ---
 st.set_page_config(page_title="Multilingual BI Assistant", layout="wide")
 st.title("🌐 Multilingual Business Intelligence Assistant")
 st.markdown("Upload your dataset and ask a business question in any language.")
 
 sns.set_theme(style="whitegrid")
 
-# 🌍 Language options
+# --- Language selector ---
 language = st.sidebar.selectbox("🌍 Output Language", ["English", "Filipino", "Spanish", "Japanese", "Chinese"])
 LANG_INSTRUCTION = {
     "English": "Respond in English.",
@@ -35,7 +37,7 @@ LANG_INSTRUCTION = {
     "Chinese": "请用中文回答。"
 }[language]
 
-# 📁 File Upload
+# --- File Upload ---
 uploaded_file = st.file_uploader("📁 Upload CSV or Excel file", type=["csv", "xlsx"])
 
 if uploaded_file:
@@ -51,34 +53,37 @@ if uploaded_file:
         st.error(f"❌ Error reading file: {e}")
         st.stop()
 
-    # 📝 User Prompt
+    # --- Prompt after successful data load ---
     user_prompt = st.text_area("📝 Enter your business question (any language):", height=120)
     if user_prompt.strip():
-        # Step 1: AI Prompt Construction
-        schema_desc = "Columns:\n" + ", ".join(df.columns) + "\n\nSample Data:\n" + df.head(10).to_markdown(index=False)
-        full_prompt = f"""
+        # Gemini Prompt Construction
+        schema = "Columns:\n" + ", ".join(df.columns)
+        sample = df.head(10).to_markdown(index=False)
+        prompt = f"""
 You are a multilingual business analyst.
-
 {LANG_INSTRUCTION}
 
-Analyze the data below based on the following question:
-
+Analyze the data below based on this question:
 **{user_prompt.strip()}**
 
 Please respond with:
 1. Executive Summary
 2. Python code for relevant visualizations
 
-{schema_desc}
+{schema}
+
+Sample Data:
+{sample}
 """
 
+        # Show prompt for transparency
         st.subheader("📤 Prompt Sent to Gemini")
-        st.code(full_prompt)
+        st.code(prompt)
 
-        # Step 2: Get AI Response
+        # AI response from Gemini
         try:
             model = genai.GenerativeModel("gemini-2.0-flash")
-            response = model.generate_content(full_prompt)
+            response = model.generate_content(prompt)
             ai_text = response.text.strip()
         except Exception as e:
             st.error(f"❌ Gemini error: {e}")
@@ -87,34 +92,31 @@ Please respond with:
         st.subheader("🧠 Executive Summary + Code")
         st.markdown(ai_text)
 
-        # Step 3: Extract Summary and Code
-        summary_text = ""
+        # Extract code blocks
+        summary_text = ai_text.split("```python")[0].strip()
         code_blocks = re.findall(r"```python(.*?)```", ai_text, re.DOTALL)
-        summary_text = ai_text.split("```python")[0].strip() if code_blocks else ai_text
 
-        # Step 4: Execute and Display Visualizations
+        # Execute & display safe charts
         st.subheader("📊 Visualizations")
         images = []
-        allowed_keywords = ("df", "sns", "plt", "groupby", "plot", "sum", "mean")
+        safe_keywords = ("df", "sns", "plt", "groupby", "sum", "mean", "count", "plot")
 
         for i, code in enumerate(code_blocks):
-            # Safety filter
-            if not all(k in code for k in allowed_keywords):
-                st.warning(f"⚠️ Skipping Chart {i+1}: Unsafe code detected.")
+            if not any(k in code for k in safe_keywords):
+                st.warning(f"⚠️ Skipping Chart {i+1}: Unsafe or unrelated code.")
                 continue
-
             try:
                 fig = plt.figure()
-                local_vars = {"df": df.copy(), "plt": plt, "sns": sns}
+                local_vars = {"df": df.copy(), "sns": sns, "plt": plt}
                 exec(code, {}, local_vars)
                 buf = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
                 fig.savefig(buf.name, bbox_inches="tight")
-                images.append((buf.name, f"Chart {i+1}"))
                 st.image(buf.name)
+                images.append((buf.name, f"Chart {i+1}"))
             except Exception as e:
                 st.error(f"⚠️ Chart {i+1} failed: {e}")
 
-        # Step 5: PDF Export
+        # Export to PDF
         st.subheader("📄 Export Summary + Charts to PDF")
         if st.button("Generate PDF Report"):
             pdf = FPDF()
