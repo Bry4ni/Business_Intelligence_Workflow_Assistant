@@ -1,21 +1,8 @@
-# Secrets
 .env
-
-# Jupyter checkpoints
-.ipynb_checkpoints/
-
-# Python cache
 __pycache__/
 *.pyc
-
-# Temporary files
-temp_upload.*
-
-# VS Code folders
+.ipynb_checkpoints/
 .vscode/
-.devcontainer/
-.DS_Store
-Thumbs.db
+temp_upload.*
+*.pdf
 
-# Streamlit
-.streamlit/config.toml
