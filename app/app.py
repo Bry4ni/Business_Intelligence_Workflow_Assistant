@@ -29,11 +29,29 @@ st.markdown("Upload your dataset and enter a business question in **any language
 uploaded_file = st.file_uploader("Upload CSV or Excel file", type=["csv", "xlsx"])
 user_prompt = st.text_area("📣 Enter your business question (any language):", placeholder="e.g. ¿Cuál es la tendencia de ventas por producto este año?")
 
+
 if uploaded_file and user_prompt.strip():
     tmp_file = tempfile.NamedTemporaryFile(delete=False)
     tmp_file.write(uploaded_file.getbuffer())
     tmp_path = tmp_file.name
 
+# 🌍 Language options
+language = st.sidebar.selectbox("🌍 Output Language", ["English", "Filipino", "Spanish", "Japanese", "Chinese"])
+LANG_INSTRUCTION = {
+    "English": "Respond in English.",
+    "Filipino": "Isulat ang sagot sa Filipino.",
+    "Spanish": "Responde en Español.",
+    "Japanese": "日本語で回答してください。",
+    "Chinese": "请用中文回答。"
+}[language]
+
+# 📁 File Upload
+uploaded_file = st.file_uploader("Upload CSV or Excel", type=["csv", "xlsx"])
+
+if uploaded_file:
+    with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(uploaded_file.name)[-1]) as tmp_file:
+        tmp_file.write(uploaded_file.getbuffer())
+        tmp_path = tmp_file.name
     try:
         df = load_and_clean_data(tmp_path)
         st.subheader("📋 Uploaded Data Preview")
