@@ -1,8 +1,9 @@
+# module/data_utils.py
+
 import pandas as pd
 import os
-import difflib
 import chardet
-import google.generativeai as genai
+import difflib
 
 COLUMN_SYNONYMS = {
     "Revenue": ["Revenue", "Sales", "Total", "Income", "Ingresos", "Amount"],
@@ -21,9 +22,8 @@ def load_and_clean_data(filepath):
             raise ValueError(f"❌ Excel read error: {e}")
     elif ext in [".csv", ".txt"]:
         with open(filepath, "rb") as f:
-            raw_data = f.read(10000)
-            encoding = chardet.detect(raw_data)['encoding'] or "utf-8"
-
+            raw = f.read(10000)
+            encoding = chardet.detect(raw)["encoding"] or "utf-8"
         try:
             df = pd.read_csv(filepath, encoding=encoding)
         except Exception as e:
