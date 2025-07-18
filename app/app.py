@@ -39,6 +39,8 @@ LANG_INSTRUCTION = {
 
 # --- File Upload ---
 uploaded_file = st.file_uploader("📁 Upload CSV or Excel file", type=["csv", "xlsx"])
+st.write("🧪 Temp file saved:", tmp_path)
+st.write("🧪 File extension detected:", os.path.splitext(tmp_path)[-1].lower())
 
 if uploaded_file:
     with tempfile.NamedTemporaryFile(delete=False) as tmp_file:
