@@ -1,3 +1,5 @@
+# module/data_utils.py
+
 import pandas as pd
 import os
 import difflib
@@ -16,14 +18,17 @@ def load_and_clean_data(filepath):
 
     if ext in [".xls", ".xlsx"]:
         try:
-            df = pd.read_excel(filepath)
+            df = pd.read_excel(filepath, engine="openpyxl")
         except Exception as e:
             raise ValueError(f"❌ Excel read error: {e}")
     elif ext in [".csv", ".txt"]:
-        with open(filepath, "rb") as f:
-            raw_data = f.read(10000)
-            encoding = chardet.detect(raw_data)["encoding"] or "utf-8"
         try:
+            # Auto-detect encoding with chardet
+            with open(filepath, "rb") as f:
+                raw_data = f.read(10000)
+                result = chardet.detect(raw_data)
+                encoding = result["encoding"] or "utf-8"
+
             df = pd.read_csv(filepath, encoding=encoding)
         except Exception as e:
             raise ValueError(f"❌ CSV read error with encoding {encoding}: {e}")
@@ -36,6 +41,7 @@ def load_and_clean_data(filepath):
     df.columns = [col.strip() for col in df.columns]
     df = df.dropna(how="all")
 
+    # Optional: Convert "Date" to Month
     if "Date" in df.columns:
         df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
         df["Month"] = df["Date"].dt.to_period("M").astype(str)
