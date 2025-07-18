@@ -2,9 +2,7 @@ streamlit
 pandas
 matplotlib
 seaborn
-google-generativeai
-python-dotenv
 fpdf
-openpyxl
-tabulate
+python-dotenv
+google-generativeai
 chardet
