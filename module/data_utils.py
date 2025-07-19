@@ -1,8 +1,10 @@
+# module/data_utils.py
+
 import pandas as pd
 import os
 import difflib
-import chardet
 import google.generativeai as genai
+import chardet
 
 COLUMN_SYNONYMS = {
     "Revenue": ["Revenue", "Sales", "Total", "Income", "Ingresos", "Amount"],
@@ -20,11 +22,11 @@ def load_and_clean_data(filepath):
         except Exception as e:
             raise ValueError(f"❌ Excel read error: {e}")
     elif ext in [".csv", ".txt"]:
+        # Auto-detect encoding
         with open(filepath, "rb") as f:
             raw_data = f.read(10000)
             result = chardet.detect(raw_data)
             encoding = result["encoding"] or "utf-8"
-
         try:
             df = pd.read_csv(filepath, encoding=encoding)
         except Exception as e:
@@ -44,6 +46,9 @@ def load_and_clean_data(filepath):
 
     return df
 
+# --------------------------------------
+# Fuzzy match to fallback column if AI fails
+# --------------------------------------
 def find_best_column(df, expected):
     possibilities = COLUMN_SYNONYMS.get(expected, [expected])
     for term in possibilities:
@@ -51,34 +56,42 @@ def find_best_column(df, expected):
         if match:
             for col in df.columns:
                 if col.lower() == match[0]:
-                    if expected.lower() == "revenue" and not pd.api.types.is_numeric_dtype(df[col]):
-                        continue
-                    return col
+                    if expected.lower() == "revenue":
+                        if pd.api.types.is_numeric_dtype(df[col]):
+                            return col
+                    else:
+                        return col
     return None
 
+# --------------------------------------
+# Gemini-powered AI role inference
+# --------------------------------------
 def infer_column_roles(df, api_key):
     genai.configure(api_key=api_key)
 
+    columns = ", ".join(df.columns)
     try:
         sample = df.head(10).to_markdown(index=False)
     except Exception:
         sample = df.head(10).to_string(index=False)
 
     prompt = f"""
-You are a business analyst. Given the sample data, identify which columns represent:
+You are a business analyst. Based on the sample data below, determine which columns most likely represent:
 
-- Revenue (income)
-- Product name
-- Region or territory
+- Revenue (or total income)
+- Product (or item name)
+- Region (or sales location)
 - Month or date
 
-Respond with JSON format:
+Respond in this JSON format:
 {{
-  "Revenue": "<column>",
-  "Product": "<column>",
-  "Region": "<column>",
-  "Month": "<column>"
+  "Revenue": "<column_name>",
+  "Product": "<column_name>",
+  "Region": "<column_name>",
+  "Month": "<column_name>"
 }}
+
+Columns: {columns}
 
 Sample Data:
 {sample}
@@ -90,10 +103,9 @@ Sample Data:
     import json
     try:
         inferred = json.loads(response.text.strip())
-        for key in ["Revenue", "Product", "Region", "Month"]:
-            if key not in inferred:
-                inferred[key] = find_best_column(df, key) or "Not Found"
+        if not isinstance(inferred, dict) or not all(k in inferred for k in ["Revenue", "Product", "Region", "Month"]):
+            raise ValueError("Gemini did not return a complete mapping.")
     except Exception:
-        inferred = {key: find_best_column(df, key) or "Not Found" for key in COLUMN_SYNONYMS}
+        inferred = {}
 
     return inferred
