@@ -95,17 +95,21 @@ Sample data:
         # 5. Run and show chart(s)
         st.subheader("📈 Visualization")
         chart_paths = []
+        images = []  # ✅ Initialize images list
+
         if chart_code:
             try:
                 with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as img_file:
                     # Setup local namespace
-                    local_vars = {"df": df, "plt": plt, "sns": sns}
+                    local_vars = {"df": df.copy(), "plt": plt, "sns": sns}
                     exec(chart_code, {}, local_vars)
                     plt.savefig(img_file.name)
                     st.image(img_file.name)
                     chart_paths.append(img_file.name)
+                    images.append((img_file.name, "Chart 1"))  # ✅ Add chart for export
             except Exception as e:
-                st.error(f"⚠️ Chart {i+1} failed: {e}")
+                st.error("⚠️ Chart failed to render:")
+                st.exception(e)
 
         # 6. PDF Export
         st.subheader("📄 Export PDF Report")
@@ -117,6 +121,7 @@ Sample data:
             pdf.cell(0, 10, "BI Report", ln=True)
             pdf.set_font("Arial", '', 12)
 
+            # Only ASCII-safe for now
             clean_summary = ''.join(c for c in summary_text if ord(c) < 128)
             pdf.multi_cell(0, 8, clean_summary)
 
@@ -132,7 +137,7 @@ Sample data:
             with open(pdf_path, "rb") as f:
                 st.download_button("📥 Download PDF", f, "bi_report.pdf", mime="application/pdf")
     except Exception as e:
-        st.error("❌ Failed to process the file.")
-        st.exception(e)
+                st.error("❌ Failed to process the file.")
+                st.exception(e)
 else:
     st.info("📂 Please upload a file and enter a business question.")
