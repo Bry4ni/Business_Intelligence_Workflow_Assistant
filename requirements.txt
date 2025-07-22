@@ -5,4 +5,4 @@ seaborn
 fpdf
 python-dotenv
 google-generativeai
-chardet
+openpyxl
