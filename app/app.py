@@ -9,20 +9,24 @@ from dotenv import load_dotenv
 from fpdf import FPDF
 import google.generativeai as genai
 import re
-import json
 
+# Add module path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from module.data_utils import load_and_clean_data, infer_column_roles
 
-# Load environment variables
+# Load API key
 load_dotenv()
 genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
 
-st.set_page_config(page_title="BI Assistant", layout="wide")
-st.title("📊 Multilingual Business Intelligence Assistant")
+# Streamlit UI setup
+st.set_page_config(page_title="🌐 Multilingual BI Assistant", layout="wide")
+st.title("🌐 Multilingual Business Intelligence Assistant")
+st.markdown("Upload your dataset and ask a business question in any language.")
 
-# 🌍 Language selector
-language = st.sidebar.selectbox("🌐 Response Language", ["English", "Filipino", "Spanish", "Japanese", "Chinese"])
+sns.set_theme(style="whitegrid")
+
+# 🌍 Language options
+language = st.sidebar.selectbox("🌍 Output Language", ["English", "Filipino", "Spanish", "Japanese", "Chinese"])
 LANG_INSTRUCTION = {
     "English": "Respond in English.",
     "Filipino": "Isulat ang sagot sa Filipino.",
@@ -30,7 +34,8 @@ LANG_INSTRUCTION = {
     "Japanese": "日本語で回答してください。",
     "Chinese": "请用中文回答。"
 }[language]
-# 📁 File Upload
+
+# 📁 Upload section
 uploaded_file = st.file_uploader("Upload CSV or Excel", type=["csv", "xlsx"])
 
 if uploaded_file:
@@ -41,94 +46,100 @@ if uploaded_file:
     try:
         df = load_and_clean_data(tmp_path)
         st.subheader("📋 Uploaded Data Preview")
-        st.dataframe(df.head(20), use_container_width=True)
+        st.dataframe(df.head(15), use_container_width=True)
+    except Exception as e:
+        st.error(f"❌ Error reading file: {e}")
+        st.stop()
 
-        # 📝 Prompt input
-        user_prompt = st.text_area("📝 Enter your business question (any language):", height=120)
+    # 🔍 Column role inference
+    try:
+        inferred = infer_column_roles(df, os.getenv("GOOGLE_API_KEY"))
+        st.markdown(f"🔍 **Inferred Columns:** {inferred}")
+    except Exception as e:
+        st.warning(f"⚠️ Could not infer column roles: {e}")
+        inferred = {}
 
-        if user_prompt.strip():
-            # Build Gemini prompt
-            sample = df.head(10).to_markdown(index=False)
-            column_list = ", ".join(df.columns)
-            full_prompt = f"""
+    # 📝 Prompt input
+    user_prompt = st.text_area("📝 Enter your business question (any language):", height=120)
+
+    if user_prompt.strip():
+        schema = df.head(10).to_markdown(index=False)
+        full_prompt = f"""
 You are a multilingual business analyst.
 
 {LANG_INSTRUCTION}
 
-Analyze the data below based on the following question:
+Based on the question:
 
-**User Prompt**: {user_prompt}
+**{user_prompt.strip()}**
 
-Give:
-1. Executive summary with trends and insights (in user's language).
-2. Python code using matplotlib/seaborn to visualize relevant insights.
+Analyze this dataset and respond with:
+1. Executive Summary
+2. Python code for visualizations
 
-Columns: {column_list}
-Sample data:
-{sample}
+Column Role Hints:
+{inferred}
+
+Sample Data:
+{schema}
 """
 
+        st.subheader("📤 Prompt Sent to Gemini")
+        st.code(full_prompt)
+
+        try:
             model = genai.GenerativeModel("gemini-2.0-flash")
             response = model.generate_content(full_prompt)
-            response_text = response.text.strip()
+            ai_text = response.text.strip()
+        except Exception as e:
+            st.error(f"❌ Gemini error: {e}")
+            st.stop()
 
-            # 3. Extract code + summary
-            import re
-            code_match = re.search(r"```python(.*?)```", response_text, re.DOTALL)
-            chart_code = code_match.group(1).strip() if code_match else None
-            summary_text = re.sub(r"```python.*?```", "", response_text, flags=re.DOTALL).strip()
+        # Extract summary & visualizations
+        st.subheader("🧠 Executive Summary + Code")
+        st.markdown(ai_text)
 
-            # 4. Show summary
-            st.subheader("🧠 Executive Summary")
-            st.markdown(summary_text)
+        code_blocks = re.findall(r"```python(.*?)```", ai_text, re.DOTALL)
+        summary_text = ai_text.split("```python")[0].strip() if code_blocks else ai_text
 
-            # 5. Run and show chart(s)
-            st.subheader("📈 Visualization")
-            chart_paths = []
-            images = []  # ✅ Initialize images list
+        st.subheader("📊 Visualizations")
+        images = []
+        for i, code in enumerate(code_blocks):
+            if not any(k in code for k in ["df", "plt", "sns"]):
+                st.warning(f"⚠️ Skipping Chart {i+1}: Unsafe or incomplete code.")
+                continue
 
-            if chart_code:
-                try:
-                    with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as img_file:
-                        local_vars = {"df": df.copy(), "plt": plt, "sns": sns}
-                        exec(chart_code, {}, local_vars)
-                        plt.savefig(img_file.name)
-                        st.image(img_file.name)
-                        chart_paths.append(img_file.name)
-                        images.append((img_file.name, "Chart 1"))
-                except Exception as e:
-                    st.error("⚠️ Chart failed to render:")
-                    st.exception(e)
+            try:
+                fig = plt.figure()
+                exec(code, {"df": df, "plt": plt, "sns": sns})
+                buf = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
+                fig.savefig(buf.name, bbox_inches="tight")
+                images.append((buf.name, f"Chart {i+1}"))
+                st.image(buf.name)
+            except Exception as e:
+                st.error(f"⚠️ Chart {i+1} failed: {e}")
 
-            # 6. PDF Export
-            st.subheader("📄 Export PDF Report")
-            if st.button("⬇️ Download Full Report as PDF"):
-                pdf = FPDF()
-                pdf.set_auto_page_break(auto=True, margin=15)
+        # 📄 Export to PDF
+        st.subheader("📄 Export Summary + Charts to PDF")
+        if st.button("Generate PDF Report"):
+            pdf = FPDF()
+            pdf.set_auto_page_break(auto=True, margin=15)
+            pdf.add_page()
+            pdf.set_font("Arial", 'B', 16)
+            pdf.cell(0, 10, "Business Intelligence Report", ln=True)
+            pdf.set_font("Arial", '', 12)
+
+            clean_summary = ''.join(c for c in summary_text if ord(c) < 128)
+            pdf.multi_cell(0, 8, clean_summary)
+
+            for path, title in images:
                 pdf.add_page()
-                pdf.set_font("Arial", 'B', 16)
-                pdf.cell(0, 10, "BI Report", ln=True)
-                pdf.set_font("Arial", '', 12)
+                pdf.set_font("Arial", 'B', 14)
+                pdf.cell(0, 10, title, ln=True)
+                pdf.image(path, w=180)
 
-                clean_summary = ''.join(c for c in summary_text if ord(c) < 128)
-                pdf.multi_cell(0, 8, clean_summary)
+            pdf_path = os.path.join(tempfile.gettempdir(), "bi_report_prompt_driven.pdf")
+            pdf.output(pdf_path)
 
-                for path, title in images:
-                    pdf.add_page()
-                    pdf.set_font("Arial", 'B', 14)
-                    pdf.cell(0, 10, title, ln=True)
-                    pdf.image(path, w=180)
-
-                pdf_path = os.path.join(tempfile.gettempdir(), "bi_report_prompt_driven.pdf")
-                pdf.output(pdf_path)
-
-                with open(pdf_path, "rb") as f:
-                    st.download_button("📥 Download PDF", f, "bi_report.pdf", mime="application/pdf")
-
-    except Exception as e:
-        st.error("❌ Failed to process the file.")
-        st.exception(e)
-
-else:
-    st.info("📂 Please upload a file and enter a business question.")
-
+            with open(pdf_path, "rb") as f:
+                st.download_button("⬇️ Download Report (PDF)", data=f, file_name="bi_report.pdf", mime="application/pdf")

@@ -1,16 +1,14 @@
-# module/data_utils.py
-
-import os
 import pandas as pd
+import os
 import difflib
 import chardet
 import google.generativeai as genai
 
 COLUMN_SYNONYMS = {
-    "Revenue": ["Revenue", "Sales", "Income", "Total", "Amount", "Ingresos"],
-    "Product": ["Product", "Item", "Name", "Producto"],
-    "Region": ["Region", "Area", "Zone", "Territory", "Región"],
-    "Month": ["Month", "Date", "Periodo", "Mes"]
+    "Revenue": ["Revenue", "Sales", "Total", "Income", "Ingresos", "Amount"],
+    "Product": ["Product", "Item", "Producto", "Product_Name"],
+    "Region": ["Region", "Area", "Territory", "Zone", "Región"],
+    "Month": ["Month", "Mes", "Periodo", "Period"]
 }
 
 def load_and_clean_data(filepath):
@@ -18,16 +16,15 @@ def load_and_clean_data(filepath):
 
     if ext in [".xls", ".xlsx"]:
         try:
-            import openpyxl
-            df = pd.read_excel(filepath, engine="openpyxl")
+            df = pd.read_excel(filepath)
         except Exception as e:
             raise ValueError(f"❌ Excel read error: {e}")
     elif ext in [".csv", ".txt"]:
+        # Auto-detect encoding
         with open(filepath, "rb") as f:
-            raw = f.read(10000)
-            result = chardet.detect(raw)
+            raw_data = f.read(10000)
+            result = chardet.detect(raw_data)
             encoding = result["encoding"] or "utf-8"
-
         try:
             df = pd.read_csv(filepath, encoding=encoding)
         except Exception as e:
@@ -47,33 +44,43 @@ def load_and_clean_data(filepath):
 
     return df
 
+def find_best_column(df, expected):
+    possibilities = COLUMN_SYNONYMS.get(expected, [expected])
+    for term in possibilities:
+        match = difflib.get_close_matches(term.lower(), [c.lower() for c in df.columns], n=1, cutoff=0.4)
+        if match:
+            for col in df.columns:
+                if col.lower() == match[0]:
+                    if expected.lower() == "revenue" and not pd.api.types.is_numeric_dtype(df[col]):
+                        continue
+                    return col
+    return None
+
 def infer_column_roles(df, api_key):
     genai.configure(api_key=api_key)
 
-    columns = ", ".join(df.columns)
     try:
         sample = df.head(10).to_markdown(index=False)
     except Exception:
         sample = df.head(10).to_string(index=False)
 
     prompt = f"""
-You are a business analyst. Based on the sample data below, identify:
+You are a business analyst. Given the sample data, identify which columns represent:
 
-- Revenue column
-- Product column
-- Region column
-- Month or Date column
+- Revenue (income)
+- Product name
+- Region or territory
+- Month or date
 
-Respond in JSON format:
+Respond with JSON format:
 {{
-  "Revenue": "<col>",
-  "Product": "<col>",
-  "Region": "<col>",
-  "Month": "<col>"
+  "Revenue": "<column>",
+  "Product": "<column>",
+  "Region": "<column>",
+  "Month": "<column>"
 }}
 
-Columns: {columns}
-Sample:
+Sample Data:
 {sample}
 """
 
@@ -83,25 +90,10 @@ Sample:
     import json
     try:
         inferred = json.loads(response.text.strip())
+        for key in ["Revenue", "Product", "Region", "Month"]:
+            if key not in inferred:
+                inferred[key] = find_best_column(df, key) or "Not Found"
     except Exception:
-        inferred = {}
-
-    # Fallback to fuzzy matching
-    for role in ["Revenue", "Product", "Region", "Month"]:
-        if role not in inferred or inferred[role] not in df.columns:
-            inferred[role] = find_best_column(df, role)
+        inferred = {key: find_best_column(df, key) or "Not Found" for key in COLUMN_SYNONYMS}
 
     return inferred
-
-def find_best_column(df, role):
-    candidates = COLUMN_SYNONYMS.get(role, [role])
-    for name in candidates:
-        match = difflib.get_close_matches(name.lower(), [c.lower() for c in df.columns], n=1, cutoff=0.6)
-        if match:
-            for col in df.columns:
-                if col.lower() == match[0]:
-                    if role == "Revenue" and not pd.api.types.is_numeric_dtype(df[col]):
-                        continue
-                    return col
-    return None
-
