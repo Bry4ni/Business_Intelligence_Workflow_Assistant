@@ -6,3 +6,4 @@ fpdf
 python-dotenv
 google-generativeai
 openpyxl
+tabulate
