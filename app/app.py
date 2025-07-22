@@ -30,9 +30,8 @@ LANG_INSTRUCTION = {
     "Japanese": "日本語で回答してください。",
     "Chinese": "请用中文回答。"
 }[language]
-
-# 📁 File upload
-uploaded_file = st.file_uploader("Upload CSV or Excel file", type=["csv", "xlsx"])
+# 📁 File Upload
+uploaded_file = st.file_uploader("Upload CSV or Excel", type=["csv", "xlsx"])
 
 if uploaded_file:
     with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(uploaded_file.name)[-1]) as tmp_file:
@@ -41,116 +40,95 @@ if uploaded_file:
 
     try:
         df = load_and_clean_data(tmp_path)
-        st.subheader("📄 Preview of Uploaded Data")
+        st.subheader("📋 Uploaded Data Preview")
         st.dataframe(df.head(20), use_container_width=True)
 
-        # Step 1: User prompt
+        # 📝 Prompt input
         user_prompt = st.text_area("📝 Enter your business question (any language):", height=120)
 
         if user_prompt.strip():
-            # Step 2: Role Inference
-            inferred = infer_column_roles(df, os.getenv("GOOGLE_API_KEY"))
-            revenue_col = inferred.get("Revenue")
-            product_col = inferred.get("Product")
-            region_col = inferred.get("Region")
-            month_col = inferred.get("Month")
+            # Build Gemini prompt
+            sample = df.head(10).to_markdown(index=False)
+            column_list = ", ".join(df.columns)
+            full_prompt = f"""
+You are a multilingual business analyst.
 
-            # Step 3: Ask Gemini what chart to use
-            prompt = f"""
 {LANG_INSTRUCTION}
 
-You are a business data analyst. Based on the prompt below and the data, suggest a suitable chart type and summarize insights.
+Analyze the data below based on the following question:
 
-Respond in this JSON format:
-{{
-  "chart_type": "<bar|line|pie|area>",
-  "summary": "<short executive summary>"
-}}
+**User Prompt**: {user_prompt}
 
-Prompt: {user_prompt}
-Data columns: {', '.join(df.columns)}
+Give:
+1. Executive summary with trends and insights (in user's language).
+2. Python code using matplotlib/seaborn to visualize relevant insights.
+
+Columns: {column_list}
+Sample data:
+{sample}
 """
+
             model = genai.GenerativeModel("gemini-2.0-flash")
-            response = model.generate_content(prompt)
-            try:
-                parsed = json.loads(response.text.strip())
-                chart_type = parsed.get("chart_type", "").lower()
-                summary_text = parsed.get("summary", "")
-            except:
-                st.warning("⚠️ Could not parse Gemini output. Showing raw response.")
-                st.markdown(response.text)
-                chart_type = None
-                summary_text = ""
+            response = model.generate_content(full_prompt)
+            response_text = response.text.strip()
 
+            # 3. Extract code + summary
+            import re
+            code_match = re.search(r"```python(.*?)```", response_text, re.DOTALL)
+            chart_code = code_match.group(1).strip() if code_match else None
+            summary_text = re.sub(r"```python.*?```", "", response_text, flags=re.DOTALL).strip()
+
+            # 4. Show summary
             st.subheader("🧠 Executive Summary")
-            st.markdown(summary_text or "No summary generated.")
+            st.markdown(summary_text)
 
-            # Step 4: Render chart based on inferred roles
+            # 5. Run and show chart(s)
             st.subheader("📈 Visualization")
-            fig, chart_path = None, None
+            chart_paths = []
+            images = []  # ✅ Initialize images list
 
-            try:
-                plt.figure(figsize=(10, 6))
-                if chart_type == "bar" and product_col and revenue_col:
-                    chart = df.groupby(product_col)[revenue_col].sum().sort_values().plot(kind="barh")
-                    plt.title(f"{revenue_col} by {product_col}")
-                elif chart_type == "line" and month_col and revenue_col:
-                    df_grouped = df.groupby(month_col)[revenue_col].sum().reset_index()
-                    sns.lineplot(data=df_grouped, x=month_col, y=revenue_col, marker="o")
-                    plt.xticks(rotation=45)
-                    plt.title(f"{revenue_col} over {month_col}")
-                elif chart_type == "pie" and region_col and revenue_col:
-                    df_grouped = df.groupby(region_col)[revenue_col].sum()
-                    df_grouped.plot(kind="pie", autopct='%1.1f%%', ylabel="")
-                    plt.title(f"{revenue_col} by {region_col}")
-                elif chart_type == "area" and month_col and product_col and revenue_col:
-                    df_grouped = df.groupby([month_col, product_col])[revenue_col].sum().unstack(fill_value=0)
-                    df_grouped.plot(kind="area", stacked=True)
-                    plt.title(f"{revenue_col} by {product_col} over {month_col}")
-                else:
-                    st.warning("⚠️ Insufficient data for suggested chart.")
-                    plt.close()
-                    chart_type = None
-
-                if chart_type:
-                    buf = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
-                    plt.tight_layout()
-                    plt.savefig(buf.name)
-                    st.image(buf.name)
-                    chart_path = buf.name
-                plt.close()
-            except Exception as e:
-                st.error("⚠️ Failed to render chart.")
-                st.exception(e)
-
-            # Step 5: Export to PDF
-            st.subheader("📄 Export to PDF")
-            if st.button("⬇️ Download Report as PDF"):
+            if chart_code:
                 try:
-                    pdf = FPDF()
-                    pdf.set_auto_page_break(auto=True, margin=15)
-                    pdf.add_page()
-                    pdf.set_font("Arial", 'B', 16)
-                    pdf.cell(0, 10, "Business Intelligence Report", ln=True)
-                    pdf.set_font("Arial", '', 12)
-                    pdf.multi_cell(0, 10, summary_text)
-
-                    if chart_path:
-                        pdf.add_page()
-                        pdf.set_font("Arial", 'B', 14)
-                        pdf.cell(0, 10, "Chart", ln=True)
-                        pdf.image(chart_path, w=180)
-
-                    pdf_path = os.path.join(tempfile.gettempdir(), "bi_report.pdf")
-                    pdf.output(pdf_path)
-
-                    with open(pdf_path, "rb") as f:
-                        st.download_button("📥 Download PDF", f, "bi_report.pdf", mime="application/pdf")
+                    with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as img_file:
+                        local_vars = {"df": df.copy(), "plt": plt, "sns": sns}
+                        exec(chart_code, {}, local_vars)
+                        plt.savefig(img_file.name)
+                        st.image(img_file.name)
+                        chart_paths.append(img_file.name)
+                        images.append((img_file.name, "Chart 1"))
                 except Exception as e:
-                    st.error("❌ PDF export failed.")
+                    st.error("⚠️ Chart failed to render:")
                     st.exception(e)
+
+            # 6. PDF Export
+            st.subheader("📄 Export PDF Report")
+            if st.button("⬇️ Download Full Report as PDF"):
+                pdf = FPDF()
+                pdf.set_auto_page_break(auto=True, margin=15)
+                pdf.add_page()
+                pdf.set_font("Arial", 'B', 16)
+                pdf.cell(0, 10, "BI Report", ln=True)
+                pdf.set_font("Arial", '', 12)
+
+                clean_summary = ''.join(c for c in summary_text if ord(c) < 128)
+                pdf.multi_cell(0, 8, clean_summary)
+
+                for path, title in images:
+                    pdf.add_page()
+                    pdf.set_font("Arial", 'B', 14)
+                    pdf.cell(0, 10, title, ln=True)
+                    pdf.image(path, w=180)
+
+                pdf_path = os.path.join(tempfile.gettempdir(), "bi_report_prompt_driven.pdf")
+                pdf.output(pdf_path)
+
+                with open(pdf_path, "rb") as f:
+                    st.download_button("📥 Download PDF", f, "bi_report.pdf", mime="application/pdf")
+
     except Exception as e:
-        st.error("❌ Error reading file.")
+        st.error("❌ Failed to process the file.")
         st.exception(e)
+
 else:
-    st.info("📂 Please upload a dataset to begin.")
+    st.info("📂 Please upload a file and enter a business question.")
+
