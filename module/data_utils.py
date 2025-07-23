@@ -32,7 +32,7 @@ def load_and_clean_data(filepath):
 # Gemini-powered column role inference
 def infer_column_roles(df, api_key):
     genai.configure(api_key=api_key)
-    model = genai.GenerativeModel("gemini-1.5-flash")
+    model = genai.GenerativeModel("gemini-2.0-flash")
 
     prompt = f"""
 You are a data analyst AI. The user will give you a dataset with column names.
