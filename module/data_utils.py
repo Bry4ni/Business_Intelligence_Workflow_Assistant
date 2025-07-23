@@ -1,62 +1,64 @@
 import os
-import chardet
 import pandas as pd
+import chardet
 import google.generativeai as genai
 
-# Load file and clean data
+# Configure Gemini once
+genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
+
+def detect_encoding(filepath):
+    """Detect file encoding to safely load CSVs."""
+    with open(filepath, 'rb') as f:
+        result = chardet.detect(f.read(10000))
+    return result['encoding']
+
 def load_and_clean_data(filepath):
+    """Load CSV or Excel with automatic detection."""
     ext = os.path.splitext(filepath)[-1].lower()
 
-    if ext == ".csv":
-        with open(filepath, "rb") as f:
-            raw_data = f.read()
-            result = chardet.detect(raw_data)
-            encoding = result["encoding"]
-
-        try:
+    try:
+        if ext == ".csv":
+            encoding = detect_encoding(filepath)
             df = pd.read_csv(filepath, encoding=encoding)
-        except Exception as e:
-            raise ValueError(f"❌ CSV read error: {e}")
+        elif ext in [".xlsx", ".xls"]:
+            df = pd.read_excel(filepath)
+        else:
+            raise ValueError("Unsupported file format.")
+    except Exception as e:
+        raise ValueError(f"❌ File read error: {e}")
 
-    elif ext in [".xls", ".xlsx"]:
-        try:
-            df = pd.read_excel(filepath, engine="openpyxl")
-        except Exception as e:
-            raise ValueError(f"❌ Excel read error: {e}")
-    else:
-        raise ValueError("❌ Unsupported file type. Please upload a .csv or .xlsx file.")
+    # Drop all-null columns/rows
+    df.dropna(how='all', axis=0, inplace=True)
+    df.dropna(how='all', axis=1, inplace=True)
 
-    df.columns = df.columns.str.strip()  # Clean column names
     return df
 
-# Infer column roles using Gemini
-def infer_column_roles(df, api_key, model_name="gemini-2.0-flash"):
+def infer_column_roles(df, api_key):
+    """Use Gemini to infer common column roles like Revenue, Product, etc."""
     genai.configure(api_key=api_key)
 
-    # Prepare sample and column names
-    sample = df.head(10).to_markdown(index=False)
-    columns = ", ".join(df.columns)
-
     prompt = f"""
-You are a data expert. Your task is to infer column roles for the following dataset sample.
+You are a data scientist. Analyze the column names below and infer their roles.
+Return a JSON object like this (use the closest matches available):
 
-Return a JSON object mapping roles: Revenue, Product, Region, Month.
-Respond ONLY with a JSON object using actual column names from the sample data.
+{{
+  "Revenue": "RevenueColumnName",
+  "Product": "ProductColumnName",
+  "Region": "RegionColumnName",
+  "Month": "MonthColumnName"
+}}
 
-Example:
-{{"Revenue": "Revenue Column", "Product": "Product Column", "Region": "Region Column", "Month": "Month Column"}}
-
-Columns: {columns}
-Sample:
-{sample}
+Columns:
+{list(df.columns)}
 """
 
-    model = genai.GenerativeModel(model_name)
-    response = model.generate_content(prompt)
-    text = response.text.strip()
-
-    import json
     try:
-        return json.loads(text)
-    except json.JSONDecodeError:
-        return {}
+        model = genai.GenerativeModel("gemini-1.5-flash")
+        response = model.generate_content(prompt)
+        text = response.text.strip()
+
+        import json
+        roles = json.loads(text)
+        return roles
+    except Exception as e:
+        raise ValueError(f"❌ Column inference failed: {e}")
