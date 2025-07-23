@@ -3,62 +3,65 @@ import pandas as pd
 import chardet
 import google.generativeai as genai
 
-# Configure Gemini once
-genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
-
-def detect_encoding(filepath):
-    """Detect file encoding to safely load CSVs."""
-    with open(filepath, 'rb') as f:
-        result = chardet.detect(f.read(10000))
-    return result['encoding']
-
 def load_and_clean_data(filepath):
-    """Load CSV or Excel with automatic detection."""
+    """
+    Load a CSV or Excel file based on its extension.
+    Uses chardet to detect encoding for CSV files.
+    """
     ext = os.path.splitext(filepath)[-1].lower()
-
     try:
-        if ext == ".csv":
-            encoding = detect_encoding(filepath)
+        if ext == '.csv':
+            with open(filepath, 'rb') as f:
+                result = chardet.detect(f.read())
+                encoding = result['encoding']
             df = pd.read_csv(filepath, encoding=encoding)
-        elif ext in [".xlsx", ".xls"]:
-            df = pd.read_excel(filepath)
+        elif ext in ['.xls', '.xlsx']:
+            df = pd.read_excel(filepath, engine="openpyxl")
         else:
-            raise ValueError("Unsupported file format.")
+            raise ValueError("Unsupported file format. Please upload a CSV or Excel file.")
+        return df
     except Exception as e:
-        raise ValueError(f"❌ File read error: {e}")
+        raise ValueError(f"❌ Excel read error: {e}")
 
-    # Drop all-null columns/rows
-    df.dropna(how='all', axis=0, inplace=True)
-    df.dropna(how='all', axis=1, inplace=True)
+def infer_column_roles(df, api_key=None):
+    """
+    Use Gemini to infer column roles (e.g. Revenue, Product, Region, Month) from the DataFrame.
+    Returns a dictionary mapping standardized roles to actual column names.
+    """
+    if not api_key:
+        raise ValueError("Gemini API key is missing.")
 
-    return df
-
-def infer_column_roles(df, api_key):
-    """Use Gemini to infer common column roles like Revenue, Product, etc."""
     genai.configure(api_key=api_key)
+    model = genai.GenerativeModel("gemini-1.5-pro-latest")
+
+    columns = list(df.columns)
+    sample = df.head(10).to_dict(orient="records")
 
     prompt = f"""
-You are a data scientist. Analyze the column names below and infer their roles.
-Return a JSON object like this (use the closest matches available):
+You are a data expert. Identify which of the following DataFrame columns correspond to these standardized business roles:
 
+- 'Revenue': the main numerical metric related to earnings or sales.
+- 'Product': the item being sold or tracked.
+- 'Region': geographic location, like country, state, area.
+- 'Month': a date or time column that represents monthly data.
+
+Respond in JSON format like:
 {{
-  "Revenue": "RevenueColumnName",
-  "Product": "ProductColumnName",
-  "Region": "RegionColumnName",
-  "Month": "MonthColumnName"
+  "Revenue": "revenue_column",
+  "Product": "product_column",
+  "Region": "region_column",
+  "Month": "month_column"
 }}
 
-Columns:
-{list(df.columns)}
+Columns: {columns}
+Sample data: {sample}
+Only return the JSON dictionary.
 """
 
     try:
-        model = genai.GenerativeModel("gemini-1.5-flash")
         response = model.generate_content(prompt)
-        text = response.text.strip()
-
-        import json
-        roles = json.loads(text)
-        return roles
+        result = response.text.strip()
+        return eval(result) if result.startswith("{") else {}
     except Exception as e:
-        raise ValueError(f"❌ Column inference failed: {e}")
+        raise ValueError(f"❌ Role inference failed: {e}")
+

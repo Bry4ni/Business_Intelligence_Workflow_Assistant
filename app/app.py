@@ -5,25 +5,25 @@ import pandas as pd
 import streamlit as st
 import matplotlib.pyplot as plt
 import seaborn as sns
-from dotenv import load_dotenv
 from fpdf import FPDF
+from dotenv import load_dotenv
 import google.generativeai as genai
 import json
 
-# Import modules
+# Set up module import
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from module.data_utils import load_and_clean_data, infer_column_roles
 
-# Load environment variables
+# Load environment and configure Gemini
 load_dotenv()
 genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
 
-# Streamlit app setup
-st.set_page_config(page_title="BI Assistant", layout="wide")
-st.title("🌐 Multilingual Business Intelligence Assistant")
+# Streamlit UI Setup
+st.set_page_config(page_title="🌐 Multilingual BI Assistant", layout="wide")
+st.title("📊 Multilingual Business Intelligence Assistant")
 
-# Language selection
-language = st.sidebar.selectbox("🌍 Output Language", ["English", "Filipino", "Spanish", "Japanese", "Chinese"])
+# 🌍 Language Selection
+language = st.sidebar.selectbox("🌍 Select Output Language", ["English", "Filipino", "Spanish", "Japanese", "Chinese"])
 LANG_INSTRUCTION = {
     "English": "Respond in English.",
     "Filipino": "Isulat ang sagot sa Filipino.",
@@ -32,8 +32,8 @@ LANG_INSTRUCTION = {
     "Chinese": "请用中文回答。"
 }[language]
 
-# Upload dataset
-uploaded_file = st.file_uploader("Upload CSV or Excel file", type=["csv", "xlsx"])
+# 📁 Upload Section
+uploaded_file = st.file_uploader("Upload a CSV or Excel file", type=["csv", "xlsx"])
 
 if uploaded_file:
     with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(uploaded_file.name)[-1]) as tmp_file:
@@ -42,129 +42,130 @@ if uploaded_file:
 
     try:
         df = load_and_clean_data(tmp_path)
-        st.subheader("📋 Uploaded Data")
-        st.dataframe(df.head(15), use_container_width=True)
+        st.subheader("📋 Preview Data")
+        st.dataframe(df.head(), use_container_width=True)
     except Exception as e:
-        st.error(f"❌ File loading failed: {e}")
+        st.error(f"❌ Failed to read file: {e}")
         st.stop()
 
-    # Infer column roles
+    # 🔍 Column Role Inference
     try:
-        roles = infer_column_roles(df, os.getenv("GOOGLE_API_KEY"))
-        st.markdown(f"🔍 **Inferred Roles:** `{roles}`")
+        inferred_roles = infer_column_roles(df, os.getenv("GOOGLE_API_KEY"))
+        st.markdown(f"🔍 **Inferred Roles:** `{inferred_roles}`")
     except Exception as e:
-        st.warning(f"⚠️ Role inference failed: {e}")
-        roles = {}
+        st.warning(f"⚠️ Could not infer column roles: {e}")
+        inferred_roles = {}
 
-    # Prompt input
-    user_prompt = st.text_area("📝 Enter your business question:", height=140)
+    # 📝 Prompt
+    user_prompt = st.text_area("📝 Enter your business question:", height=120)
+
     if user_prompt.strip():
-        st.markdown("🔍 **Analyzing with Gemini...**")
+        try:
+            sample_data = df.head(10).to_dict(orient="records")
+            schema_preview = json.dumps(sample_data, indent=2)
 
-        sample = df.head(10).to_dict(orient="records")
-        prompt = f"""
-You are a multilingual data analyst.
+            full_prompt = f"""
+You are a multilingual business analyst.
 
 {LANG_INSTRUCTION}
 
-Based on the following user request:
+Using the sample data and column role hints below, analyze the uploaded dataset and respond in JSON format.
 
-**{user_prompt.strip()}**
+**Question**: {user_prompt.strip()}
 
-Analyze the uploaded data and respond in this JSON format:
-
+Respond in this JSON structure:
 {{
-  "summary": "Write an executive summary based on the data and question.",
+  "summary": "...",
   "charts": [
     {{
       "chart_type": "bar" | "line" | "pie",
-      "x": "column name",
-      "y": "column name (skip for pie)",
-      "hue": "column name (optional)",
-      "title": "title of the chart"
-    }},
-    ...
+      "x": "...",
+      "y": "...",
+      "hue": "...", (optional)
+      "title": "..."
+    }}
   ]
 }}
 
-Data Sample:
-{json.dumps(sample, indent=2)}
+Column Role Hints: {inferred_roles}
 
-Column Role Hints:
-{json.dumps(roles, indent=2)}
+Sample Data:
+{schema_preview}
 """
 
-        try:
-            model = genai.GenerativeModel("gemini-2.0-flash")
-            response = model.generate_content(prompt)
-            response_text = response.text.strip()
+            st.subheader("📤 Prompt Sent to Gemini")
+            st.code(full_prompt)
 
-            # Parse response JSON
-            parsed = json.loads(response_text)
-            summary_text = parsed.get("summary", "")
-            chart_instructions = parsed.get("charts", [])
+            model = genai.GenerativeModel("gemini-1.5-pro-latest")
+            response = model.generate_content(full_prompt)
+            result = json.loads(response.text)
+
+            summary_text = result.get("summary", "")
+            chart_instructions = result.get("charts", [])
         except Exception as e:
-            st.error("⚠️ Could not parse Gemini response.")
-            st.code(response_text)
+            st.error(f"❌ Could not parse Gemini response: {e}")
+            st.text(response.text)
             st.stop()
 
-        # Show summary
+        # 🧠 Summary
         st.subheader("🧠 Executive Summary")
         st.markdown(summary_text)
 
-        # Render charts
+        # 📊 Chart Rendering
         st.subheader("📊 Visualizations")
-        images = []
+        chart_paths = []
 
         for i, chart in enumerate(chart_instructions):
-            try:
-                chart_type = chart.get("chart_type", "")
-                x = chart.get("x")
-                y = chart.get("y")
-                hue = chart.get("hue")
-                title = chart.get("title", f"Chart {i+1}")
+            chart_type = chart.get("chart_type")
+            x = chart.get("x")
+            y = chart.get("y")
+            hue = chart.get("hue")
+            title = chart.get("title", f"Chart {i+1}")
 
+            try:
                 fig, ax = plt.subplots(figsize=(10, 6))
-                if chart_type == "bar" and x and y:
-                    sns.barplot(data=df, x=x, y=y, hue=hue, ax=ax, ci=None)
-                elif chart_type == "line" and x and y:
-                    sns.lineplot(data=df, x=x, y=y, hue=hue, ax=ax, ci=None)
-                elif chart_type == "pie" and x:
-                    counts = df[x].value_counts()
-                    ax.pie(counts, labels=counts.index, autopct="%1.1f%%", startangle=90)
-                    ax.axis('equal')
+                if chart_type == "bar":
+                    sns.barplot(data=df, x=x, y=y, hue=hue if hue else None, ax=ax)
+                elif chart_type == "line":
+                    sns.lineplot(data=df, x=x, y=y, hue=hue if hue else None, ax=ax)
+                elif chart_type == "pie":
+                    df.groupby(x)[y].sum().plot(kind='pie', autopct='%1.1f%%', startangle=90, ax=ax)
+                    ax.set_ylabel("")
                 else:
-                    st.warning(f"⚠️ Unsupported or incomplete chart config: {chart}")
+                    st.warning(f"⚠️ Unsupported chart type: {chart_type}")
                     continue
 
                 ax.set_title(title)
-                buf = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
-                fig.savefig(buf.name, bbox_inches="tight")
-                st.image(buf.name)
-                images.append((buf.name, title))
+                chart_file = tempfile.NamedTemporaryFile(delete=False, suffix=".png")
+                fig.savefig(chart_file.name, bbox_inches="tight")
+                st.image(chart_file.name, caption=title)
+                chart_paths.append((chart_file.name, title))
             except Exception as e:
-                st.error(f"⚠️ Chart {i+1} failed: {e}")
+                st.error(f"⚠️ Failed to render chart {i+1}: {e}")
 
-        # Export PDF
-        st.subheader("📄 Export to PDF")
+        # 📄 Export to PDF
+        st.subheader("📄 Export Summary + Charts to PDF")
         if st.button("⬇️ Download Report as PDF"):
-            pdf = FPDF()
-            pdf.add_page()
-            pdf.set_auto_page_break(auto=True, margin=15)
-            pdf.set_font("Arial", 'B', 16)
-            pdf.cell(0, 10, "Business Intelligence Report", ln=True)
-            pdf.set_font("Arial", '', 12)
-            pdf.multi_cell(0, 10, ''.join(c for c in summary_text if ord(c) < 128))
-
-            for path, title in images:
+            try:
+                pdf = FPDF()
                 pdf.add_page()
-                pdf.set_font("Arial", 'B', 14)
-                pdf.cell(0, 10, title, ln=True)
-                pdf.image(path, w=180)
+                pdf.set_font("Arial", 'B', 16)
+                pdf.cell(0, 10, "Business Intelligence Report", ln=True)
+                pdf.set_font("Arial", '', 12)
 
-            pdf_path = os.path.join(tempfile.gettempdir(), "bi_report.pdf")
-            pdf.output(pdf_path)
+                clean_summary = ''.join(c for c in summary_text if ord(c) < 128)
+                pdf.multi_cell(0, 8, clean_summary)
 
-            with open(pdf_path, "rb") as f:
-                st.download_button("📥 Download PDF", f, "bi_report.pdf", mime="application/pdf")
+                for path, title in chart_paths:
+                    pdf.add_page()
+                    pdf.set_font("Arial", 'B', 14)
+                    pdf.cell(0, 10, title, ln=True)
+                    pdf.image(path, w=180)
 
+                pdf_path = os.path.join(tempfile.gettempdir(), "bi_report_prompt_driven.pdf")
+                pdf.output(pdf_path)
+
+                with open(pdf_path, "rb") as f:
+                    st.download_button("📥 Download PDF", f, "bi_report.pdf", mime="application/pdf")
+            except Exception as e:
+                st.error(f"❌ Failed to generate PDF: {e}")
