@@ -8,7 +8,6 @@ import seaborn as sns
 from dotenv import load_dotenv
 from fpdf import FPDF
 import google.generativeai as genai
-import re
 
 # Add module path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
@@ -95,44 +94,46 @@ Sample Data:
             st.error(f"❌ Gemini error: {e}")
             st.stop()
 
-        # Extract summary & visualizations
-        # Extract code blocks from AI response
-        code_blocks = re.findall(r"```python(.*?)```", ai_text, re.DOTALL)
+        import re
 
-        # Fallback to whole response if no code blocks are found
-        if code_blocks:
-            summary_text = ai_text.split("```python")[0].strip()
-        else:
-            summary_text = ai_text.strip()
-        # 🧠 Executive Summary
+        # Extract summary before first code block
+        summary_text = ai_text.split("```python")[0].strip()
+
         st.subheader("🧠 Executive Summary")
         st.markdown(summary_text)
 
-        # 📊 Visualizations
+        # Extract Python code blocks
+        code_blocks = re.findall(r"```python(.*?)```", ai_text, re.DOTALL)
+
         st.subheader("📊 Visualizations")
         images = []
 
         for i, code in enumerate(code_blocks):
-            if not any(k in code for k in ["df", "plt", "sns"]):
-                st.warning(f"⚠️ Skipping Chart {i+1}: Unsafe or incomplete code.")
+            # Safety: Skip code blocks that redefine df
+            if "pd.DataFrame" in code or "data =" in code:
+                st.warning(f"⚠️ Skipping generated DataFrame in Chart {i+1}")
                 continue
 
             try:
-                fig = plt.figure()
+                fig = plt.figure(figsize=(10, 6))
                 local_vars = {"df": df.copy(), "plt": plt, "sns": sns}
+
+                # Execute only plotting instructions
                 exec(code, {}, local_vars)
-                buf = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
-                fig.savefig(buf.name, bbox_inches="tight")
-                images.append((buf.name, f"Chart {i+1}"))
-                st.image(buf.name)
+
+                # Save and render chart
+                tmp_img = tempfile.NamedTemporaryFile(delete=False, suffix=".png")
+                fig.savefig(tmp_img.name, bbox_inches='tight')
+                st.image(tmp_img.name, caption=f"Chart {i+1}")
+                images.append((tmp_img.name, f"Chart {i+1}"))
             except Exception as e:
-                st.error(f"⚠️ Chart {i+1} failed:")
+                st.error(f"⚠️ Chart {i+1} failed to render")
                 st.exception(e)
 
 
         # 📄 Export to PDF
         st.subheader("📄 Export Summary + Charts to PDF")
-        if st.button("Generate PDF Report"):
+        if st.button("⬇️ Download Report as PDF"):
             pdf = FPDF()
             pdf.set_auto_page_break(auto=True, margin=15)
             pdf.add_page()
@@ -140,8 +141,7 @@ Sample Data:
             pdf.cell(0, 10, "Business Intelligence Report", ln=True)
             pdf.set_font("Arial", '', 12)
 
-            clean_summary = ''.join(c for c in summary_text if ord(c) < 128)
-            pdf.multi_cell(0, 8, clean_summary)
+            pdf.multi_cell(0, 8, ''.join(c for c in summary_text if ord(c) < 128))
 
             for path, title in images:
                 pdf.add_page()
@@ -153,4 +153,4 @@ Sample Data:
             pdf.output(pdf_path)
 
             with open(pdf_path, "rb") as f:
-                st.download_button("⬇️ Download Report (PDF)", data=f, file_name="bi_report.pdf", mime="application/pdf")
+                st.download_button("📥 Download PDF", f, "bi_report.pdf", mime="application/pdf")
