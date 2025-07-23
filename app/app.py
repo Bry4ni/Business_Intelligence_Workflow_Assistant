@@ -96,14 +96,22 @@ Sample Data:
             st.stop()
 
         # Extract summary & visualizations
-        st.subheader("🧠 Executive Summary + Code")
-        st.markdown(ai_text)
-
+        # Extract code blocks from AI response
         code_blocks = re.findall(r"```python(.*?)```", ai_text, re.DOTALL)
-        summary_text = ai_text.split("```python")[0].strip() if code_blocks else ai_text
 
+        # Fallback to whole response if no code blocks are found
+        if code_blocks:
+            summary_text = ai_text.split("```python")[0].strip()
+        else:
+            summary_text = ai_text.strip()
+        # 🧠 Executive Summary
+        st.subheader("🧠 Executive Summary")
+        st.markdown(summary_text)
+
+        # 📊 Visualizations
         st.subheader("📊 Visualizations")
         images = []
+
         for i, code in enumerate(code_blocks):
             if not any(k in code for k in ["df", "plt", "sns"]):
                 st.warning(f"⚠️ Skipping Chart {i+1}: Unsafe or incomplete code.")
@@ -111,13 +119,16 @@ Sample Data:
 
             try:
                 fig = plt.figure()
-                exec(code, {"df": df, "plt": plt, "sns": sns})
+                local_vars = {"df": df.copy(), "plt": plt, "sns": sns}
+                exec(code, {}, local_vars)
                 buf = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
                 fig.savefig(buf.name, bbox_inches="tight")
                 images.append((buf.name, f"Chart {i+1}"))
                 st.image(buf.name)
             except Exception as e:
-                st.error(f"⚠️ Chart {i+1} failed: {e}")
+                st.error(f"⚠️ Chart {i+1} failed:")
+                st.exception(e)
+
 
         # 📄 Export to PDF
         st.subheader("📄 Export Summary + Charts to PDF")
