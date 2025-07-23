@@ -30,7 +30,7 @@ Sample:
 Return a dictionary like:
 {{"Revenue": "Revenue", "Product": "Product", "Region": "Region", "Month": "Month"}}
 """
-    model = genai.GenerativeModel("gemini-1.5-pro-latest")
+    model = genai.GenerativeModel("gemini-2.0-flash")
     response = model.generate_content(prompt)
     try:
         return eval(response.text.strip())

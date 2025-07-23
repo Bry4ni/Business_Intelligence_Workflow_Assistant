@@ -94,7 +94,7 @@ Sample Data: {json.dumps(sample_json, indent=2)}
 """
 
         # 🧠 Gemini Response
-        model = genai.GenerativeModel("gemini-1.5-pro-latest")
+        model = genai.GenerativeModel("gemini-2.0-flash")
         response = model.generate_content(prompt)
         raw_response = response.text.strip()
 
