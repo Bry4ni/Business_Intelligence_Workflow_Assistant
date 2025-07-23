@@ -1,4 +1,3 @@
-# module/data_utils.py
 import json
 import os
 import pandas as pd
@@ -15,21 +14,22 @@ def load_and_clean_data(filepath):
                 encoding = chardet.detect(f.read())["encoding"]
             df = pd.read_csv(filepath, encoding=encoding)
         elif ext in [".xls", ".xlsx"]:
-            import openpyxl  # Ensure dependency
+            import openpyxl  # Ensure dependency exists
             df = pd.read_excel(filepath, engine="openpyxl")
         else:
             raise ValueError("Unsupported file format.")
     except Exception as e:
         raise ValueError(f"❌ File read error: {e}")
-    
-    df.columns = df.columns.str.strip()  # Strip whitespace from column headers
+
+    df.columns = df.columns.str.strip()
+    df = df.loc[:, ~df.columns.str.contains('^Unnamed')]  # Remove unnamed index cols
     return df
 
-# Use Gemini to infer column roles (Revenue, Product, etc.)
+# Use Gemini to infer column roles
 def infer_column_roles(df, api_key):
-    genai.configure(api_key=api_key)  # Only configure once
+    genai.configure(api_key=api_key)
     model = genai.GenerativeModel("gemini-2.0-flash")
-    
+
     schema = df.head(10).to_markdown(index=False)
 
     prompt = f"""
@@ -50,20 +50,18 @@ Respond ONLY in JSON format like:
 Table:
 {schema}
 """
-    response = model.generate_content(prompt)
     try:
-        return json.loads(response.text.strip())
+        response = model.generate_content(prompt)
+        parsed = json.loads(response.text.strip())
+        return parsed
     except Exception as e:
         print("❌ Gemini response parse error:", e)
-        print("🔁 Raw response:", response.text)
+        print("🔁 Raw response:\n", response.text if 'response' in locals() else "No response received.")
         return {}
 
-# Normalize column names using fuzzy matching
+# Fuzzy match requested column name against actual column names
 def normalize_column_name(name, columns):
     if not name:
         return None
-    columns = list(columns)
     match = difflib.get_close_matches(name, columns, n=1, cutoff=0.6)
-    if match:
-        return match[0]
-    return name  # Return as-is if no good match found
+    return match[0] if match else name
