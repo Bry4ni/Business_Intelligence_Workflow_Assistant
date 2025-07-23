@@ -4,7 +4,7 @@ import os
 import pandas as pd
 import chardet
 import difflib
-from google.generativeai import GenerativeModel
+import google.generativeai as genai
 
 # Load and clean uploaded data
 def load_and_clean_data(filepath):
