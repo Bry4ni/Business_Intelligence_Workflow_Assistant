@@ -1,99 +1,62 @@
-import pandas as pd
 import os
-import difflib
 import chardet
+import pandas as pd
 import google.generativeai as genai
 
-COLUMN_SYNONYMS = {
-    "Revenue": ["Revenue", "Sales", "Total", "Income", "Ingresos", "Amount"],
-    "Product": ["Product", "Item", "Producto", "Product_Name"],
-    "Region": ["Region", "Area", "Territory", "Zone", "Región"],
-    "Month": ["Month", "Mes", "Periodo", "Period"]
-}
-
+# Load file and clean data
 def load_and_clean_data(filepath):
     ext = os.path.splitext(filepath)[-1].lower()
 
-    if ext in [".xls", ".xlsx"]:
-        try:
-            df = pd.read_excel(filepath)
-        except Exception as e:
-            raise ValueError(f"❌ Excel read error: {e}")
-    elif ext in [".csv", ".txt"]:
-        # Auto-detect encoding
+    if ext == ".csv":
         with open(filepath, "rb") as f:
-            raw_data = f.read(10000)
+            raw_data = f.read()
             result = chardet.detect(raw_data)
-            encoding = result["encoding"] or "utf-8"
+            encoding = result["encoding"]
+
         try:
             df = pd.read_csv(filepath, encoding=encoding)
         except Exception as e:
-            raise ValueError(f"❌ CSV read error with encoding {encoding}: {e}")
+            raise ValueError(f"❌ CSV read error: {e}")
+
+    elif ext in [".xls", ".xlsx"]:
+        try:
+            df = pd.read_excel(filepath, engine="openpyxl")
+        except Exception as e:
+            raise ValueError(f"❌ Excel read error: {e}")
     else:
         raise ValueError("❌ Unsupported file type. Please upload a .csv or .xlsx file.")
 
-    if df.empty:
-        raise ValueError("❌ Loaded file is empty.")
-
-    df.columns = [col.strip() for col in df.columns]
-    df = df.dropna(how="all")
-
-    if "Date" in df.columns:
-        df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
-        df["Month"] = df["Date"].dt.to_period("M").astype(str)
-
+    df.columns = df.columns.str.strip()  # Clean column names
     return df
 
-def find_best_column(df, expected):
-    possibilities = COLUMN_SYNONYMS.get(expected, [expected])
-    for term in possibilities:
-        match = difflib.get_close_matches(term.lower(), [c.lower() for c in df.columns], n=1, cutoff=0.4)
-        if match:
-            for col in df.columns:
-                if col.lower() == match[0]:
-                    if expected.lower() == "revenue" and not pd.api.types.is_numeric_dtype(df[col]):
-                        continue
-                    return col
-    return None
-
-def infer_column_roles(df, api_key):
+# Infer column roles using Gemini
+def infer_column_roles(df, api_key, model_name="gemini-2.0-pro"):
     genai.configure(api_key=api_key)
 
-    try:
-        sample = df.head(10).to_markdown(index=False)
-    except Exception:
-        sample = df.head(10).to_string(index=False)
+    # Prepare sample and column names
+    sample = df.head(10).to_markdown(index=False)
+    columns = ", ".join(df.columns)
 
     prompt = f"""
-You are a business analyst. Given the sample data, identify which columns represent:
+You are a data expert. Your task is to infer column roles for the following dataset sample.
 
-- Revenue (income)
-- Product name
-- Region or territory
-- Month or date
+Return a JSON object mapping roles: Revenue, Product, Region, Month.
+Respond ONLY with a JSON object using actual column names from the sample data.
 
-Respond with JSON format:
-{{
-  "Revenue": "<column>",
-  "Product": "<column>",
-  "Region": "<column>",
-  "Month": "<column>"
-}}
+Example:
+{{"Revenue": "Revenue Column", "Product": "Product Column", "Region": "Region Column", "Month": "Month Column"}}
 
-Sample Data:
+Columns: {columns}
+Sample:
 {sample}
 """
 
-    model = genai.GenerativeModel("gemini-2.0-flash")
+    model = genai.GenerativeModel(model_name)
     response = model.generate_content(prompt)
+    text = response.text.strip()
 
     import json
     try:
-        inferred = json.loads(response.text.strip())
-        for key in ["Revenue", "Product", "Region", "Month"]:
-            if key not in inferred:
-                inferred[key] = find_best_column(df, key) or "Not Found"
-    except Exception:
-        inferred = {key: find_best_column(df, key) or "Not Found" for key in COLUMN_SYNONYMS}
-
-    return inferred
+        return json.loads(text)
+    except json.JSONDecodeError:
+        return {}
