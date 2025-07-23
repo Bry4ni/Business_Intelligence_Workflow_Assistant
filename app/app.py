@@ -62,7 +62,7 @@ if uploaded_file:
     if user_prompt.strip():
         try:
             sample_data = df.head(10).to_dict(orient="records")
-            schema_preview = json.dumps(sample_data, indent=2)
+            schema_preview = json.dumps(sample_data, indent=2, default=str)
 
             full_prompt = f"""
 You are a multilingual business analyst.
