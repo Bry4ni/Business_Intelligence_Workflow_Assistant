@@ -1,6 +1,9 @@
-# app/app.py
 import os
 import sys
+
+# ✅ Fix import path for sibling modules
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
 import tempfile
 import json
 import pandas as pd
@@ -11,11 +14,9 @@ from dotenv import load_dotenv
 from fpdf import FPDF
 import google.generativeai as genai
 
-sys.path.append(os.path.abspath(".."))
+# ✅ Your module import now works
 from module.data_utils import load_and_clean_data, infer_column_roles, normalize_column_name
 
-# Setup
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 load_dotenv()
 genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
 
