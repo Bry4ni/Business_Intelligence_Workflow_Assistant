@@ -10,6 +10,8 @@ import seaborn as sns
 from dotenv import load_dotenv
 from fpdf import FPDF
 import google.generativeai as genai
+
+sys.path.append(os.path.abspath(".."))
 from module.data_utils import load_and_clean_data, infer_column_roles, normalize_column_name
 
 # Setup
