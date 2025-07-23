@@ -30,7 +30,7 @@ def load_and_clean_data(filepath):
     return df
 
 # Infer column roles using Gemini
-def infer_column_roles(df, api_key, model_name="gemini-2.0-pro"):
+def infer_column_roles(df, api_key, model_name="gemini-2.0-flash"):
     genai.configure(api_key=api_key)
 
     # Prepare sample and column names

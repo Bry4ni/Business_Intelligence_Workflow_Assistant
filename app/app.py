@@ -92,7 +92,7 @@ Sample Data:
 """
 
         with st.spinner("🔍 Analyzing with Gemini..."):
-            model = genai.GenerativeModel("gemini-2.0-pro")
+            model = genai.GenerativeModel("gemini-2.0-flash")
             response = model.generate_content(full_prompt)
             try:
                 result = json.loads(response.text.strip())
