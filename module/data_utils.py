@@ -32,7 +32,7 @@ def infer_column_roles(df, api_key=None):
         raise ValueError("Gemini API key is missing.")
 
     genai.configure(api_key=api_key)
-    model = genai.GenerativeModel("gemini-1.5-pro-latest")
+    model = genai.GenerativeModel("gemini-2.0-flash")
 
     columns = list(df.columns)
     sample = df.head(10).to_dict(orient="records")

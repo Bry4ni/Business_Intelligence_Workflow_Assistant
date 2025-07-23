@@ -96,7 +96,7 @@ Sample Data:
             st.subheader("📤 Prompt Sent to Gemini")
             st.code(full_prompt)
 
-            model = genai.GenerativeModel("gemini-1.5-pro-latest")
+            model = genai.GenerativeModel("gemini-2.0-flash")
             response = model.generate_content(full_prompt)
             result = json.loads(response.text)
 
