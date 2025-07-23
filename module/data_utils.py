@@ -4,7 +4,7 @@ import os
 import pandas as pd
 import chardet
 import difflib
-from google.generativeai import GenerativeModel
+import google.generativeai as genai
 
 # Load and clean uploaded data
 def load_and_clean_data(filepath):
@@ -27,9 +27,9 @@ def load_and_clean_data(filepath):
 
 # Use Gemini to infer column roles (Revenue, Product, etc.)
 def infer_column_roles(df, api_key):
-    genai_model = GenerativeModel("gemini-2.0-flash")
-    genai_model.configure(api_key=api_key)
-
+    genai.configure(api_key=api_key)  # Only configure once
+    model = genai.GenerativeModel("gemini-2.0-flash")
+    
     schema = df.head(10).to_markdown(index=False)
 
     prompt = f"""
@@ -50,10 +50,12 @@ Respond ONLY in JSON format like:
 Table:
 {schema}
 """
-    response = genai_model.generate_content(prompt)
+    response = model.generate_content(prompt)
     try:
         return json.loads(response.text.strip())
-    except Exception:
+    except Exception as e:
+        print("❌ Gemini response parse error:", e)
+        print("🔁 Raw response:", response.text)
         return {}
 
 # Normalize column names using fuzzy matching
