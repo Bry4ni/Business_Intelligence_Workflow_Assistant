@@ -101,14 +101,20 @@ Sample Data: {json.dumps(sample_json, indent=2)}
         response = model.generate_content(prompt)
         raw_response = response.text.strip()
 
+        # Debug: show raw Gemini output if empty
+        if not raw_response:
+            st.error("❌ Gemini returned an empty response.")
+            st.stop()
+
         try:
             parsed = json.loads(raw_response)
             summary = parsed["summary"]
             chart_instructions = parsed["charts"]
         except Exception as e:
             st.error(f"❌ Could not parse Gemini response: {e}")
-            st.code(raw_response)
+            st.code(raw_response)  # show what was returned
             st.stop()
+
 
         # 🧠 Summary
         st.subheader("🧠 Executive Summary")
