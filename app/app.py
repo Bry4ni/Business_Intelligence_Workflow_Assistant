@@ -102,19 +102,20 @@ Sample Data: {json.dumps(sample_json, indent=2)}
         raw_response = response.text.strip()
 
         # Debug: show raw Gemini output if empty
-        if not raw_response:
-            st.error("❌ Gemini returned an empty response.")
-            st.stop()
+        import re
+
+        # Strip Markdown-style code block if present
+        if raw_response.startswith("```"):
+            raw_response = re.sub(r"^```(?:json)?\n?", "", raw_response)
+            raw_response = re.sub(r"\n?```$", "", raw_response)
 
         try:
             parsed = json.loads(raw_response)
-            summary = parsed["summary"]
-            chart_instructions = parsed["charts"]
+            summary = parsed.get("summary", "")
+            chart_instructions = parsed.get("charts", [])
         except Exception as e:
-            st.error(f"❌ Could not parse Gemini response: {e}")
-            st.code(raw_response)  # show what was returned
+            st.error("❌ Gemini returned an invalid response.")
             st.stop()
-
 
         # 🧠 Summary
         st.subheader("🧠 Executive Summary")
