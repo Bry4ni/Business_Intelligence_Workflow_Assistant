@@ -1,9 +1,6 @@
+# app/app.py
 import os
 import sys
-
-# ✅ Fix import path for sibling modules
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-
 import tempfile
 import json
 import pandas as pd
@@ -14,9 +11,11 @@ from dotenv import load_dotenv
 from fpdf import FPDF
 import google.generativeai as genai
 
-# ✅ Your module import now works
-from module.data_utils import load_and_clean_data, infer_column_roles, normalize_column_name
+# Import helper functions
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+from module.data_utils import load_and_clean_data, infer_column_roles, normalize_column_name, find_fallback_column
 
+# Setup
 load_dotenv()
 genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
 
@@ -24,8 +23,8 @@ st.set_page_config(page_title="🌐 BI Assistant", layout="wide")
 st.title("🌐 Multilingual Business Intelligence Assistant")
 sns.set_theme(style="whitegrid")
 
-# 📁 Upload Section
-uploaded_file = st.file_uploader("📤 Upload CSV or Excel file", type=["csv", "xlsx"])
+# 📁 Upload
+uploaded_file = st.file_uploader("📤 Upload CSV or Excel", type=["csv", "xlsx"])
 language = st.sidebar.selectbox("🌍 Output Language", ["English", "Filipino", "Spanish", "Japanese", "Chinese"])
 LANG_INSTRUCTION = {
     "English": "Respond in English.",
@@ -36,7 +35,6 @@ LANG_INSTRUCTION = {
 }[language]
 
 if uploaded_file:
-    # 🔄 Save uploaded file to temp
     with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(uploaded_file.name)[-1]) as tmp_file:
         tmp_file.write(uploaded_file.getbuffer())
         tmp_path = tmp_file.name
@@ -46,23 +44,24 @@ if uploaded_file:
         st.subheader("📋 Preview Data")
         st.dataframe(df.head(15), use_container_width=True)
     except Exception as e:
-        st.error(f"❌ Error reading file: {e}")
+        st.error(f"❌ Error loading file: {e}")
         st.stop()
 
-    # 🔍 Column role inference
+    # 🧠 Inferred Column Roles
     try:
         inferred_roles = infer_column_roles(df, os.getenv("GOOGLE_API_KEY"))
         st.markdown(f"🔍 Inferred Roles: {inferred_roles}")
-    except Exception as e:
+    except Exception:
         st.warning("⚠️ Role inference failed.")
         inferred_roles = {}
 
-    # 📝 Prompt input
+    # 📝 Prompt
     user_prompt = st.text_area("📝 Enter your business question:", height=100)
     if user_prompt.strip():
         st.markdown("🔍 Analyzing with Gemini...")
+
         try:
-            sample_json = json.loads(
+            sample_data = json.loads(
                 df.head(10).to_json(orient="records", date_format="iso", force_ascii=False)
             )
         except Exception as e:
@@ -70,13 +69,13 @@ if uploaded_file:
             st.stop()
 
         prompt = f"""
-You are a multilingual business analyst.
+You are a multilingual business intelligence analyst.
 
 {LANG_INSTRUCTION}
 
-Using the sample data and column role hints below, analyze the uploaded dataset and respond in JSON format.
+Using the following dataset sample and role hints, generate insights. Only use column names found in the dataset.
 
-**Question**: {user_prompt.strip()}
+**User Question**: {user_prompt.strip()}
 
 Respond in this JSON structure:
 {{
@@ -86,50 +85,39 @@ Respond in this JSON structure:
       "chart_type": "bar" | "line" | "pie",
       "x": "...",
       "y": "...",
-      "hue": "...", (optional)
+      "hue": "...",  // optional
       "title": "..."
     }}
   ]
 }}
 
 Column Role Hints: {json.dumps(inferred_roles)}
-Sample Data: {json.dumps(sample_json, indent=2)}
+Available Columns: {list(df.columns)}
+Sample Data: {json.dumps(sample_data, indent=2)}
 """
 
-        # 🧠 Gemini Response
-        model = genai.GenerativeModel("gemini-2.0-flash")
-        response = model.generate_content(prompt)
-        raw_response = response.text.strip()
-
-        # Debug: show raw Gemini output if empty
-        import re
-
-        # Strip Markdown-style code block if present
-        if raw_response.startswith("```"):
-            raw_response = re.sub(r"^```(?:json)?\n?", "", raw_response)
-            raw_response = re.sub(r"\n?```$", "", raw_response)
-
         try:
-            parsed = json.loads(raw_response)
-            summary = parsed.get("summary", "")
-            chart_instructions = parsed.get("charts", [])
+            model = genai.GenerativeModel("gemini-2.0-flash")
+            response = model.generate_content(prompt)
+            parsed = json.loads(response.text.strip())
+            summary = parsed["summary"]
+            chart_instructions = parsed["charts"]
         except Exception as e:
-            st.error("❌ Gemini returned an invalid response.")
+            st.error(f"❌ Could not parse Gemini response.")
             st.stop()
 
-        # 🧠 Summary
         st.subheader("🧠 Executive Summary")
         st.markdown(summary)
 
-        # 📊 Charts
+        # 📊 Render charts
         st.subheader("📊 Visualizations")
         images = []
         for i, chart in enumerate(chart_instructions):
             try:
                 chart_type = chart["chart_type"]
-                x = normalize_column_name(chart["x"], df.columns)
-                y = normalize_column_name(chart["y"], df.columns)
-                hue = normalize_column_name(chart.get("hue", None), df.columns)
+                x = normalize_column_name(chart["x"], df.columns) or find_fallback_column(df, inferred_roles, "x")
+                y = normalize_column_name(chart["y"], df.columns) or find_fallback_column(df, inferred_roles, "y", numeric=True)
+                hue = normalize_column_name(chart.get("hue"), df.columns)
                 title = chart.get("title", f"Chart {i+1}")
 
                 fig = plt.figure(figsize=(10, 6))
