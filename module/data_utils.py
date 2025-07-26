@@ -1,4 +1,3 @@
-# module/data_utils.py
 import os
 import json
 import chardet
@@ -60,6 +59,6 @@ def normalize_column_name(name, columns):
     return match[0] if match else name
 
 def clean_gemini_json(text):
-    # Remove Markdown code block formatting if present
+    """Remove Markdown ```json wrappers and extra whitespace from Gemini responses"""
     cleaned = re.sub(r"^```json|```$", "", text.strip(), flags=re.MULTILINE).strip()
     return cleaned
