@@ -96,14 +96,22 @@ Available Columns: {list(df.columns)}
 Sample Data: {json.dumps(sample_data, indent=2)}
 """
 
+        # 🧠 Gemini Response
         try:
             model = genai.GenerativeModel("gemini-2.0-flash")
             response = model.generate_content(prompt)
-            parsed = json.loads(response.text.strip())
+            raw_response = response.text.strip()
+
+            if not raw_response or not raw_response.startswith("{"):
+                raise ValueError("Gemini returned an invalid or empty response.")
+
+            parsed = json.loads(raw_response)
             summary = parsed["summary"]
             chart_instructions = parsed["charts"]
+
         except Exception as e:
-            st.error(f"❌ Could not parse Gemini response.")
+            st.error("❌ Could not parse Gemini response.")
+            st.code(raw_response if 'raw_response' in locals() else "No response received.")
             st.stop()
 
         st.subheader("🧠 Executive Summary")
