@@ -110,37 +110,37 @@ Sample Data: {json.dumps(sample_json, indent=2)}
         st.subheader("🧠 Executive Summary")
         st.markdown(summary)
 
-        #st.subheader("📊 Visualizations")
-        #images = []
-        #for i, chart in enumerate(chart_instructions):
-            #try:
-                #chart_type = chart["chart_type"]
-                #x = normalize_column_name(chart["x"], df.columns)
-                #y = normalize_column_name(chart["y"], df.columns)
-                #hue = normalize_column_name(chart.get("hue", None), df.columns)
-                #title = chart.get("title", f"Chart {i+1}")
+        st.subheader("📊 Visualizations")
+        images = []
+        for i, chart in enumerate(chart_instructions):
+            try:
+                chart_type = chart["chart_type"]
+                x = normalize_column_name(chart["x"], df.columns)
+                y = normalize_column_name(chart["y"], df.columns)
+                hue = normalize_column_name(chart.get("hue", None), df.columns)
+                title = chart.get("title", f"Chart {i+1}")
 
-                #fig = plt.figure(figsize=(10, 6))
-                #if chart_type == "bar":
-                    #sns.barplot(data=df, x=x, y=y, hue=hue, estimator="sum", ci=None)
-                #elif chart_type == "line":
-                    #sns.lineplot(data=df, x=x, y=y, hue=hue)
-                #elif chart_type == "pie":
-                    #pie_data = df.groupby(x)[y].sum()
-                    #plt.pie(pie_data, labels=pie_data.index, autopct='%1.1f%%')
-                #else:
-                    #raise ValueError(f"Unsupported chart type: {chart_type}")
+                fig = plt.figure(figsize=(10, 6))
+                if chart_type == "bar":
+                    sns.barplot(data=df, x=x, y=y, hue=hue, estimator="sum", ci=None)
+                elif chart_type == "line":
+                    sns.lineplot(data=df, x=x, y=y, hue=hue)
+                elif chart_type == "pie":
+                    pie_data = df.groupby(x)[y].sum()
+                    plt.pie(pie_data, labels=pie_data.index, autopct='%1.1f%%')
+                else:
+                    raise ValueError(f"Unsupported chart type: {chart_type}")
 
-                #plt.title(title)
-                #plt.xticks(rotation=45)
-                #plt.tight_layout()
-                #img_path = os.path.join(tempfile.gettempdir(), f"chart_{i}.png")
-                #plt.savefig(img_path)
-                #st.image(img_path)
-                #images.append((img_path, title))
+                plt.title(title)
+                plt.xticks(rotation=45)
+                plt.tight_layout()
+                img_path = os.path.join(tempfile.gettempdir(), f"chart_{i}.png")
+                plt.savefig(img_path)
+                st.image(img_path)
+                images.append((img_path, title))
 
-            #except Exception as e:
-                #st.error(f"⚠️ Failed to render chart {i+1}: {e}")
+            except Exception as e:
+                st.error(f"⚠️ Failed to render chart {i+1}: {e}")
 
         st.subheader("📄 Export Report to PDF")
         if st.button("⬇️ Download Report as PDF"):
@@ -153,11 +153,11 @@ Sample Data: {json.dumps(sample_json, indent=2)}
             clean_summary = ''.join(c for c in summary if ord(c) < 128)
             pdf.multi_cell(0, 10, clean_summary)
 
-            #for path, title in images:
-                #pdf.add_page()
-                #pdf.set_font("Arial", 'B', 14)
-                #pdf.cell(0, 10, title, ln=True)
-                #pdf.image(path, w=180)
+            for path, title in images:
+                pdf.add_page()
+                pdf.set_font("Arial", 'B', 14)
+                pdf.cell(0, 10, title, ln=True)
+                pdf.image(path, w=180)
 
             pdf_path = os.path.join(tempfile.gettempdir(), "bi_report.pdf")
             pdf.output(pdf_path)
