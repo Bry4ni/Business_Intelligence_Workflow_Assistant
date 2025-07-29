@@ -56,7 +56,34 @@ if uploaded_file:
         st.warning("⚠️ Role inference failed.")
         inferred_roles = {}
 
-    user_prompt = st.text_area("📝 Enter your business question:", height=100)
+    user_prompt = st.text_area(
+    "📝 Enter your business question:", 
+    value=st.session_state.get("generated_prompt", ""), 
+    height=100)
+    # 🔮 Generate Sample Prompt from Gemini
+    if st.button("🎯 Generate Sample Prompt"):
+        if df is not None:
+            try:
+                sample_json = json.loads(
+                    df.head(10).to_json(orient="records", date_format="iso", force_ascii=False)
+                )
+                role_hint_text = json.dumps(inferred_roles)
+                prompt = f"""
+    You are a data analyst. Based on the column roles below and this sample data, generate one helpful business analysis question that a user might ask.
+
+    Column Roles: {role_hint_text}
+    Sample Data: {json.dumps(sample_json, indent=2)}
+
+    Respond ONLY with the question.
+    """
+                model = genai.GenerativeModel("gemini-2.0-flash")
+                response = model.generate_content(prompt)
+                user_prompt = response.text.strip()
+                st.session_state.generated_prompt = user_prompt
+            except Exception as e:
+                st.warning(f"⚠️ Could not generate sample prompt: {e}")
+        else:
+            st.warning("⚠️ Please upload a file first.")
     if user_prompt.strip():
         st.markdown("🔍 Analyzing with Gemini...")
         try:
