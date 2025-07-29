@@ -61,7 +61,7 @@ if uploaded_file:
     value=st.session_state.get("generated_prompt", ""), 
     height=100)
     # 🔮 Generate Sample Prompt from Gemini
-    if st.button("🎯 Generate Sample Prompt"):
+    if st.button("Generate"):
         if df is not None:
             try:
                 sample_json = json.loads(
