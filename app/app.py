@@ -67,6 +67,9 @@ if uploaded_file:
     import random
     import re
 
+    # Default general prompt
+    default_general_prompt = "Analyze the following dataset and provide a business-oriented summary with trends, patterns, and recommendations."
+
     if st.button("Generate"):
         st.markdown("Generating...")
 
@@ -86,27 +89,26 @@ if uploaded_file:
     ]
     """
 
-    try:
-        model = genai.GenerativeModel("gemini-2.0-flash")
-        response = model.generate_content(generation_prompt)
-        raw_text = response.text.strip()
+        try:
+            model = genai.GenerativeModel("gemini-2.0-flash")
+            response = model.generate_content(generation_prompt)
+            raw_text = response.text.strip()
 
-        # Sanitize common issues (e.g., smart quotes or Markdown formatting)
-        clean_text = raw_text.replace("“", "\"").replace("”", "\"").replace("‘", "'").replace("’", "'")
-        clean_text = re.sub(r"^```json|```$", "", clean_text).strip()  # Strip markdown ```json
+            # Sanitize response (remove markdown formatting, smart quotes)
+            clean_text = raw_text.replace("“", "\"").replace("”", "\"").replace("‘", "'").replace("’", "'")
+            clean_text = re.sub(r"^```json|```$", "", clean_text).strip()
 
-        prompts = json.loads(clean_text)
+            prompts = json.loads(clean_text)
 
-        if isinstance(prompts, list) and all(isinstance(p, str) for p in prompts):
-            random_prompt = random.choice(prompts)
-            st.session_state["user_prompt"] = random_prompt
-            st.success("✅ Successfully Generated")
-        else:
-            raise ValueError("Not a valid list of strings.")
-    except Exception as e:
-        st.error("❌ Could not generate or parse random prompt.")
-        st.code(raw_text if 'raw_text' in locals() else str(e))
-
+            if isinstance(prompts, list) and all(isinstance(p, str) for p in prompts):
+                random_prompt = random.choice(prompts)
+                st.session_state["user_prompt"] = random_prompt
+                st.success("✅ Random prompt generated.")
+            else:
+                raise ValueError("Not a valid list of strings.")
+        except Exception as e:
+            st.error("❌ Could not generate or parse random prompt.")
+            st.code(raw_text if 'raw_text' in locals() else str(e))
 
     # Text area input
     user_prompt = st.text_area(
