@@ -62,11 +62,9 @@ if uploaded_file:
 
     # 💡 Default general prompt
     default_general_prompt = "Analyze the following dataset and provide a business-oriented summary with trends, patterns, and recommendations."
-    st.markdown(f"💡 **Default Prompt**: _{default_general_prompt}_")
-
     # ✨ Generate sample prompts
-    if st.button("✨ Generate Sample Prompts"):
-        st.markdown("🧠 Generating prompts with Gemini...")
+    if st.button("Generate"):
+        st.markdown("🧠 Generating...")
 
         generation_prompt = f"""
 {LANG_INSTRUCTION}
