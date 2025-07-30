@@ -60,49 +60,50 @@ if uploaded_file:
         st.warning("⚠️ Role inference failed.")
         inferred_roles = {}
 
-    # 💡 Default general prompt
+    import random
+
+    # Default general prompt
     default_general_prompt = "Analyze the following dataset and provide a business-oriented summary with trends, patterns, and recommendations."
-    # ✨ Generate sample prompts
+
+    # Button to generate prompts
     if st.button("Generate"):
         st.markdown("🧠 Generating...")
 
         generation_prompt = f"""
-{LANG_INSTRUCTION}
+    {LANG_INSTRUCTION}
 
-Given the general instruction:
-\"{default_general_prompt}\"
+    Given the instruction:
+    \"{default_general_prompt}\"
 
-Generate a few diverse, realistic, dataset-specific business questions that a user might ask — for example about sales, marketing, churn, revenue, or profitability.
+    Generate 5 diverse and useful business prompts related to a dataset (e.g. sales, finance, marketing, churn).
 
-Respond ONLY with a JSON list of strings:
-[
-  "...",
-  "...",
-  "..."
-]
-"""
+    Respond ONLY in JSON list format like:
+    [
+    "...",
+    "...",
+    "..."
+    ]
+    """
         try:
             model = genai.GenerativeModel("gemini-2.0-flash")
             response = model.generate_content(generation_prompt)
-            prompt_suggestions = json.loads(response.text.strip())
+            prompts = json.loads(response.text.strip())
 
-            if isinstance(prompt_suggestions, list) and all(isinstance(p, str) for p in prompt_suggestions):
-                selected_prompt = st.selectbox(prompt_suggestions)
-                if selected_prompt:
-                    st.session_state["user_prompt"] = selected_prompt
+            if isinstance(prompts, list) and all(isinstance(p, str) for p in prompts):
+                random_prompt = random.choice(prompts)
+                st.session_state["user_prompt"] = random_prompt
             else:
-                raise ValueError("Gemini response is not a list of strings.")
+                raise ValueError("Response was not a list of strings.")
         except Exception as e:
-            st.error("❌ Could not generate or parse sample prompts.")
+            st.error("❌ Could not generate or parse random prompt.")
             st.code(response.text.strip())
 
-    # 📝 Prompt input field
+    # Text area input
     user_prompt = st.text_area(
         "📝 Enter your business question:",
         height=100,
         value=st.session_state.get("user_prompt", default_general_prompt)
     )
-
     # 🔍 If prompt submitted
     if user_prompt.strip():
         st.markdown("🔍 Analyzing with Gemini...")
