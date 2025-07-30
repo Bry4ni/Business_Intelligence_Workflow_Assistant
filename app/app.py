@@ -10,7 +10,7 @@ from dotenv import load_dotenv
 from fpdf import FPDF
 import google.generativeai as genai
 
-# Setup path for local module
+# Import modules
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from module.data_utils import (
     load_and_clean_data,
@@ -19,14 +19,14 @@ from module.data_utils import (
     clean_gemini_json
 )
 
-# Config
+# Configure
 load_dotenv()
 genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
 st.set_page_config(page_title="🌐 BI Assistant", layout="wide")
 st.title("🌐 Multilingual Business Intelligence Assistant")
 sns.set_theme(style="whitegrid")
 
-# Language handling
+# 🌍 Language selector
 language = st.sidebar.selectbox("🌍 Output Language", ["English", "Filipino", "Spanish", "Japanese", "Chinese"])
 LANG_INSTRUCTION = {
     "English": "Respond in English.",
@@ -36,7 +36,7 @@ LANG_INSTRUCTION = {
     "Chinese": "请用中文回答。"
 }[language]
 
-# File uploader
+# 📤 Upload file
 uploaded_file = st.file_uploader("📤 Upload CSV or Excel file", type=["csv", "xlsx"])
 
 if uploaded_file:
@@ -52,7 +52,7 @@ if uploaded_file:
         st.error(f"❌ Error reading file: {e}")
         st.stop()
 
-    # Inferred roles
+    # 🔍 Column Role Inference
     try:
         inferred_roles = infer_column_roles(df, os.getenv("GOOGLE_API_KEY"))
         st.markdown(f"🔍 Inferred Roles: {inferred_roles}")
@@ -60,51 +60,52 @@ if uploaded_file:
         st.warning("⚠️ Role inference failed.")
         inferred_roles = {}
 
-    # Default general prompt
-    # Default prompt (displayed + translated)
+    # 💡 Default general prompt
     default_general_prompt = "Analyze the following dataset and provide a business-oriented summary with trends, patterns, and recommendations."
-    translated_prompt = f"{LANG_INSTRUCTION}\n\n{default_general_prompt}"
+    st.markdown(f"💡 **Default Prompt**: _{default_general_prompt}_")
 
-    # Button to generate sample prompts
-    if st.button("Generate"):
-        st.markdown("🧠 Generating...")
-        prompt_generator = f"""
-        {LANG_INSTRUCTION}
+    # ✨ Generate sample prompts
+    if st.button("✨ Generate Sample Prompts"):
+        st.markdown("🧠 Generating prompts with Gemini...")
 
-        Given this general instruction:
-        "{default_general_prompt}"
+        generation_prompt = f"""
+{LANG_INSTRUCTION}
 
-        Imagine you're helping a user explore a dataset. Generate 3 to 5 different business questions a user might ask about such a dataset. Make them realistic, analytical, and varied — including topics like revenue trends, top products, sales by region, seasonality, etc.
+Given the general instruction:
+\"{default_general_prompt}\"
 
-        Return ONLY a JSON array of strings. Example:
-        [
-        "Which month had the highest sales and why?",
-        "What are the top 3 selling products by revenue?",
-        "How do sales differ across regions over time?",
-        "Is there a seasonal trend in revenue performance?",
-        "Which region has the lowest performing product line?"
-        ]
-        """
+Generate a few diverse, realistic, dataset-specific business questions that a user might ask — for example about sales, marketing, churn, revenue, or profitability.
+
+Respond ONLY with a JSON list of strings:
+[
+  "...",
+  "...",
+  "..."
+]
+"""
         try:
             model = genai.GenerativeModel("gemini-2.0-flash")
-            result = model.generate_content(prompt_generator)
-            prompt_suggestions = json.loads(result.text.strip())
+            response = model.generate_content(generation_prompt)
+            prompt_suggestions = json.loads(response.text.strip())
 
-            if isinstance(prompt_suggestions, list):
-                selected_prompt = st.selectbox("🧪 Choose a generated prompt:", prompt_suggestions)
+            if isinstance(prompt_suggestions, list) and all(isinstance(p, str) for p in prompt_suggestions):
+                selected_prompt = st.selectbox(prompt_suggestions)
                 if selected_prompt:
                     st.session_state["user_prompt"] = selected_prompt
+            else:
+                raise ValueError("Gemini response is not a list of strings.")
         except Exception as e:
             st.error("❌ Could not generate or parse sample prompts.")
-            st.code(result.text.strip())
+            st.code(response.text.strip())
 
-    # Input field
+    # 📝 Prompt input field
     user_prompt = st.text_area(
         "📝 Enter your business question:",
         height=100,
         value=st.session_state.get("user_prompt", default_general_prompt)
     )
 
+    # 🔍 If prompt submitted
     if user_prompt.strip():
         st.markdown("🔍 Analyzing with Gemini...")
         try:
@@ -139,22 +140,22 @@ Respond ONLY in this JSON format:
 Column Role Hints: {json.dumps(inferred_roles)}
 Sample Data: {json.dumps(sample_json, indent=2)}
 """
-        # Gemini generation
+
         try:
             response = genai.GenerativeModel("gemini-2.0-flash").generate_content(analysis_prompt)
             parsed = clean_gemini_json(response.text.strip())
             summary = parsed["summary"]
             chart_instructions = parsed["charts"]
-        except Exception as e:
-            st.error(f"❌ Could not parse Gemini response.")
+        except Exception:
+            st.error("❌ Could not parse Gemini response.")
             st.code(response.text.strip())
             st.stop()
 
-        # Summary
+        # 🧠 Summary
         st.subheader("🧠 Executive Summary")
         st.markdown(summary)
 
-        # Charts
+        # 📊 Charts
         st.subheader("📊 Visualizations")
         images = []
         for i, chart in enumerate(chart_instructions):
@@ -187,7 +188,7 @@ Sample Data: {json.dumps(sample_json, indent=2)}
             except Exception as e:
                 st.error(f"⚠️ Failed to render chart {i+1}: {e}")
 
-        # PDF export
+        # 📄 PDF Export
         st.subheader("📄 Export Report to PDF")
         if st.button("⬇️ Download Report as PDF"):
             pdf = FPDF()
@@ -209,3 +210,4 @@ Sample Data: {json.dumps(sample_json, indent=2)}
 
             with open(pdf_path, "rb") as f:
                 st.download_button("📥 Download PDF", f, "bi_report.pdf", mime="application/pdf")
+
