@@ -61,38 +61,46 @@ if uploaded_file:
         inferred_roles = {}
 
     # Default general prompt
+    # Default prompt (displayed + translated)
     default_general_prompt = "Analyze the following dataset and provide a business-oriented summary with trends, patterns, and recommendations."
-    st.markdown(f"**Default Prompt**: _{default_general_prompt}_")
+    translated_prompt = f"{LANG_INSTRUCTION}\n\n{default_general_prompt}"
 
-    # Sample prompt generator
-    if st.button( "Generate"):
-        st.markdown(" Generating...")
+    # Button to generate sample prompts
+    if st.button("Generate"):
+        st.markdown("🧠 Generating...")
         prompt_generator = f"""
-{LANG_INSTRUCTION}
+    {LANG_INSTRUCTION}
 
-Given this general instruction:
-"{default_general_prompt}"
+    Given the instruction:
+    "{default_general_prompt}"
 
-Generate business-specific prompts a user might ask about a dataset like sales, finance, marketing, or churn. 
-Respond ONLY as a JSON list:
-[
-  "...",
-  "...",
-  "..."
-]
-"""
+    Generate 3 business-specific prompts a user might ask about a dataset in the business domain (e.g. sales, finance, churn).
+    Respond ONLY as a JSON array of strings. For example:
+    [
+    "Which products had the highest revenue in Q2?",
+    "What are the trends in monthly sales?",
+    "Which regions underperformed in March?"
+    ]
+    """
         try:
-            response = genai.GenerativeModel("gemini-2.0-flash").generate_content(prompt_generator)
-            prompt_suggestions = json.loads(response.text.strip())
+            model = genai.GenerativeModel("gemini-2.0-flash")
+            result = model.generate_content(prompt_generator)
+            prompt_suggestions = json.loads(result.text.strip())
+
             if isinstance(prompt_suggestions, list):
-                selected = st.selectbox(prompt_suggestions)
-                if selected:
-                    st.session_state["user_prompt"] = selected
+                selected_prompt = st.selectbox("🧪 Choose a generated prompt:", prompt_suggestions)
+                if selected_prompt:
+                    st.session_state["user_prompt"] = selected_prompt
         except Exception as e:
             st.error("❌ Could not generate or parse sample prompts.")
+            st.code(result.text.strip())
 
-    # Prompt input area
-    user_prompt = st.text_area("📝 Enter your business question:", height=100, value=st.session_state.get("user_prompt", default_general_prompt))
+    # Input field
+    user_prompt = st.text_area(
+        "📝 Enter your business question:",
+        height=100,
+        value=st.session_state.get("user_prompt", default_general_prompt)
+    )
 
     if user_prompt.strip():
         st.markdown("🔍 Analyzing with Gemini...")
