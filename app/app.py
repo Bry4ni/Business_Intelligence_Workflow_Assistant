@@ -92,7 +92,7 @@ Respond ONLY as a JSON list:
             st.error("❌ Could not generate or parse sample prompts.")
 
     # Prompt input area
-    user_prompt = st.text_area("📝 Enter your business question:", height=100, value=default_general_prompt, value=st.session_state.get("user_prompt", ""))
+    user_prompt = st.text_area("📝 Enter your business question:", height=100, value=st.session_state.get("user_prompt", default_general_prompt))
 
     if user_prompt.strip():
         st.markdown("🔍 Analyzing with Gemini...")
