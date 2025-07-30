@@ -62,11 +62,11 @@ if uploaded_file:
 
     # Default general prompt
     default_general_prompt = "Analyze the following dataset and provide a business-oriented summary with trends, patterns, and recommendations."
-    st.markdown(f"💡 **Default Prompt**: _{default_general_prompt}_")
+    st.markdown(f"**Default Prompt**: _{default_general_prompt}_")
 
     # Sample prompt generator
-    if st.button("✨ Generate Sample Prompts"):
-        st.markdown("🧠 Generating prompts with Gemini...")
+    if st.button( "Generate"):
+        st.markdown(" Generating...")
         prompt_generator = f"""
 {LANG_INSTRUCTION}
 
@@ -85,14 +85,14 @@ Respond ONLY as a JSON list:
             response = genai.GenerativeModel("gemini-2.0-flash").generate_content(prompt_generator)
             prompt_suggestions = json.loads(response.text.strip())
             if isinstance(prompt_suggestions, list):
-                selected = st.selectbox("🧪 Choose a generated prompt:", prompt_suggestions)
+                selected = st.selectbox(prompt_suggestions)
                 if selected:
                     st.session_state["user_prompt"] = selected
         except Exception as e:
             st.error("❌ Could not generate or parse sample prompts.")
 
     # Prompt input area
-    user_prompt = st.text_area("📝 Enter your business question:", height=100, value=st.session_state.get("user_prompt", ""))
+    user_prompt = st.text_area("📝 Enter your business question:", height=100, value=default_general_prompt, value=st.session_state.get("user_prompt", ""))
 
     if user_prompt.strip():
         st.markdown("🔍 Analyzing with Gemini...")
