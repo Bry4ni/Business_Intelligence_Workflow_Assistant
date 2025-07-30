@@ -23,7 +23,7 @@ from module.data_utils import (
 load_dotenv()
 genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
 st.set_page_config(page_title="🌐 BI Assistant", layout="wide")
-st.title("🌐 Multilingual Business Intelligence Assistant")
+st.title("🌐 Business Intelligence Assistant")
 sns.set_theme(style="whitegrid")
 
 # 🌍 Language selector
@@ -60,14 +60,15 @@ if uploaded_file:
         st.warning("⚠️ Role inference failed.")
         inferred_roles = {}
 
-    import random
 
     # Default general prompt
     default_general_prompt = "Analyze the following dataset and provide a business-oriented summary with trends, patterns, and recommendations."
 
-    # Button to generate prompts
+    import random
+    import re
+
     if st.button("Generate"):
-        st.markdown("🧠 Generating...")
+        st.markdown("Generating...")
 
         generation_prompt = f"""
     {LANG_INSTRUCTION}
@@ -77,26 +78,35 @@ if uploaded_file:
 
     Generate 5 diverse and useful business prompts related to a dataset (e.g. sales, finance, marketing, churn).
 
-    Respond ONLY in JSON list format like:
+    Respond ONLY in raw JSON list format like:
     [
-    "...",
-    "...",
-    "..."
+    "Prompt 1",
+    "Prompt 2",
+    "Prompt 3"
     ]
     """
-        try:
-            model = genai.GenerativeModel("gemini-2.0-flash")
-            response = model.generate_content(generation_prompt)
-            prompts = json.loads(response.text.strip())
 
-            if isinstance(prompts, list) and all(isinstance(p, str) for p in prompts):
-                random_prompt = random.choice(prompts)
-                st.session_state["user_prompt"] = random_prompt
-            else:
-                raise ValueError("Response was not a list of strings.")
-        except Exception as e:
-            st.error("❌ Could not generate or parse random prompt.")
-            st.code(response.text.strip())
+    try:
+        model = genai.GenerativeModel("gemini-2.0-flash")
+        response = model.generate_content(generation_prompt)
+        raw_text = response.text.strip()
+
+        # Sanitize common issues (e.g., smart quotes or Markdown formatting)
+        clean_text = raw_text.replace("“", "\"").replace("”", "\"").replace("‘", "'").replace("’", "'")
+        clean_text = re.sub(r"^```json|```$", "", clean_text).strip()  # Strip markdown ```json
+
+        prompts = json.loads(clean_text)
+
+        if isinstance(prompts, list) and all(isinstance(p, str) for p in prompts):
+            random_prompt = random.choice(prompts)
+            st.session_state["user_prompt"] = random_prompt
+            st.success("✅ Random prompt generated.")
+        else:
+            raise ValueError("Not a valid list of strings.")
+    except Exception as e:
+        st.error("❌ Could not generate or parse random prompt.")
+        st.code(raw_text if 'raw_text' in locals() else str(e))
+
 
     # Text area input
     user_prompt = st.text_area(
