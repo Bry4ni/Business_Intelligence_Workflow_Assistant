@@ -59,11 +59,7 @@ if uploaded_file:
     except:
         st.warning("⚠️ Role inference failed.")
         inferred_roles = {}
-
-
-    # Default general prompt
-    default_general_prompt = "Analyze the following dataset and provide a business-oriented summary with trends, patterns, and recommendations."
-
+    
     import random
     import re
 
