@@ -69,19 +69,22 @@ if uploaded_file:
     if st.button("Generate"):
         st.markdown("🧠 Generating...")
         prompt_generator = f"""
-    {LANG_INSTRUCTION}
+        {LANG_INSTRUCTION}
 
-    Given the instruction:
-    "{default_general_prompt}"
+        Given this general instruction:
+        "{default_general_prompt}"
 
-    Generate 3 business-specific prompts a user might ask about a dataset in the business domain (e.g. sales, finance, churn).
-    Respond ONLY as a JSON array of strings. For example:
-    [
-    "Which products had the highest revenue in Q2?",
-    "What are the trends in monthly sales?",
-    "Which regions underperformed in March?"
-    ]
-    """
+        Imagine you're helping a user explore a dataset. Generate 3 to 5 different business questions a user might ask about such a dataset. Make them realistic, analytical, and varied — including topics like revenue trends, top products, sales by region, seasonality, etc.
+
+        Return ONLY a JSON array of strings. Example:
+        [
+        "Which month had the highest sales and why?",
+        "What are the top 3 selling products by revenue?",
+        "How do sales differ across regions over time?",
+        "Is there a seasonal trend in revenue performance?",
+        "Which region has the lowest performing product line?"
+        ]
+        """
         try:
             model = genai.GenerativeModel("gemini-2.0-flash")
             result = model.generate_content(prompt_generator)
