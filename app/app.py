@@ -100,7 +100,7 @@ if uploaded_file:
         if isinstance(prompts, list) and all(isinstance(p, str) for p in prompts):
             random_prompt = random.choice(prompts)
             st.session_state["user_prompt"] = random_prompt
-            st.success("✅ Random prompt generated.")
+            st.success("✅ Successfully Generated")
         else:
             raise ValueError("Not a valid list of strings.")
     except Exception as e:
