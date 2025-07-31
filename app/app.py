@@ -64,7 +64,15 @@ if uploaded_file:
     import re
 
     # Default general prompt
-    default_general_prompt = "Analyze the following dataset and provide a business-oriented summary with trends, patterns, and recommendations."
+    DEFAULT_PROMPT_TRANSLATIONS = {
+    "English": "Analyze the following dataset and provide a business-oriented summary with trends, patterns, and recommendations.",
+    "Filipino": "Suriin ang dataset at magbigay ng buod na nakatuon sa negosyo, kasama ang mga uso, pattern, at mga rekomendasyon.",
+    "Spanish": "Analiza el siguiente conjunto de datos y proporciona un resumen orientado al negocio con tendencias, patrones y recomendaciones.",
+    "Japanese": "次のデータセットを分析し、傾向、パターン、および提言を含むビジネスに焦点を当てた要約を提供してください。",
+    "Chinese": "分析以下数据集，并提供包含趋势、模式和建议的业务导向摘要。"
+    }
+
+    default_general_prompt = DEFAULT_PROMPT_TRANSLATIONS.get(language, DEFAULT_PROMPT_TRANSLATIONS["English"])
 
     if st.button("Generate"):
         st.markdown("Generating...")
