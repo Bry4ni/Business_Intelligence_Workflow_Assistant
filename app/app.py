@@ -70,6 +70,8 @@ if uploaded_file:
         st.markdown("Generating...")
 
         generation_prompt = f"""
+    You are an intelligent multilingual business analyst.
+    
     {LANG_INSTRUCTION}
 
     Given the instruction:
@@ -217,4 +219,3 @@ Sample Data: {json.dumps(sample_json, indent=2)}
 
             with open(pdf_path, "rb") as f:
                 st.download_button("📥 Download PDF", f, "bi_report.pdf", mime="application/pdf")
-
